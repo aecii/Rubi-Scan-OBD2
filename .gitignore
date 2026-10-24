@@ -1,0 +1,25 @@
+# Gradle and Android build output
+.gradle/
+.kotlin/
+**/build/
+build/
+
+# Machine-local SDK path
+local.properties
+
+# Android Studio
+.idea/
+*.iml
+*.hprof
+
+# Packaged outputs
+*.apk
+*.ap_
+*.aab
+captures/
+.externalNativeBuild/
+.cxx/
+
+# OS junk
+.DS_Store
+Thumbs.db
