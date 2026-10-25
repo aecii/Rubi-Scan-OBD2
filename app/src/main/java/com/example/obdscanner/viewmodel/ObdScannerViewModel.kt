@@ -47,6 +47,7 @@ import java.io.File
 import java.io.FileWriter
 import kotlin.math.sin
 import kotlin.math.tanh
+import kotlin.random.Random
 
 class ObdScannerViewModel : ViewModel() {
 
@@ -99,6 +100,24 @@ class ObdScannerViewModel : ViewModel() {
     val vehicleSaveOffer: StateFlow<VehicleSaveOffer?> = _vehicleSaveOffer.asStateFlow()
 
     private var appContext: Context? = null
+    private var demoScenario: DemoScenario? = null
+    private var lastDemoSignature: String? = null
+    private var demoMilOn: Boolean = true
+    private var demoStoredCount: Int = 1
+    private var demoPrimaryCode: String = "P0300"
+
+    private val demoVinAlphabet = "ABCDEFGHJKLMNPRSTUVWXYZ0123456789"
+    private val demoYearChars = "ABCDEFGHJKLMNPRST123456789"
+    private val demoWmis = listOf(
+        "1J4", "1J8", "1HG", "1FA", "1G1", "1GC", "1N4", "4T1", "JM1", "WBA",
+        "WDD", "KMH", "JF1", "1VW", "5NP", "3FA", "JHM", "1C4", "2T1", "5FN",
+        "WVW", "4S3", "1YV", "JN1"
+    )
+    private val demoCodePool = listOf(
+        "P0100", "P0101", "P0115", "P0128", "P0171", "P0174",
+        "P0300", "P0301", "P0302", "P0303", "P0304", "P0305", "P0306",
+        "P0420", "P0442", "P0456", "P0520"
+    )
 
     private val _adapterInfo = MutableStateFlow(ObdAdapterInfo())
     val adapterInfo: StateFlow<ObdAdapterInfo> = _adapterInfo.asStateFlow()
@@ -211,21 +230,18 @@ class ObdScannerViewModel : ViewModel() {
         pollJob?.cancel()
         pollJob = null
 
-        val jeepProfile = VehicleProfile(
-            vin = "1C4HJWDG2FL123456",
-            make = "Jeep",
-            model = "Wrangler Rubicon / JKU",
-            year = "2015",
-            engine = "3.6L V6 Pentastar Engine",
-            displayName = "2015 Jeep Wrangler Rubicon / JKU (3.6L V6 Pentastar Engine)"
-        )
+        val scenario = if (offerSave || demoScenario == null) newDemoScenario() else demoScenario!!
+        demoScenario = scenario
+        demoStoredCount = scenario.storedCount
+        demoMilOn = scenario.storedCount > 0
+        demoPrimaryCode = scenario.primaryCode
 
         _vehicleInfo.value = VehicleInfo(
-            vin = "1C4HJWDG2FL123456",
-            calibrationId = "CALID_JEEP_36L_2015",
-            cvn = "CVN98765",
-            ecuName = "Jeep PCM / ECM",
-            profile = jeepProfile
+            vin = scenario.profile.vin,
+            calibrationId = scenario.calibrationId,
+            cvn = scenario.cvn,
+            ecuName = "Engine control module",
+            profile = scenario.profile
         )
 
         _adapterInfo.value = ObdAdapterInfo(
@@ -238,17 +254,18 @@ class ObdScannerViewModel : ViewModel() {
         )
 
         _connectionState.value = ConnectionState.Connected("Demo Vehicle Simulator")
-        _statusMessage.value = "Demo Mode Active: Simulating 2015 Jeep Wrangler Rubicon JKU code scan."
+        val codeWord = if (scenario.codes.size == 1) "1 trouble code" else "${scenario.codes.size} trouble codes"
+        _statusMessage.value = "Demo Mode Active: Simulating ${scenario.profile.displayName} with $codeWord."
 
         _liveMetrics.value = LiveMetrics(
             rpm = 2450.0,
-            speedKmh = 72.4, // ~45 mph
-            coolantCelsius = 90.0, // ~194 °F
+            speedKmh = 72.4,
+            coolantCelsius = 90.0,
             loadPercent = 38.5,
             throttlePercent = 22.0,
             batteryVoltage = 13.8,
-            milOn = true,
-            dtcCount = 1,
+            milOn = demoMilOn,
+            dtcCount = demoStoredCount,
             stftBank1 = 3.2,
             ltftBank1 = 1.5,
             stftBank2 = 2.8,
@@ -263,28 +280,97 @@ class ObdScannerViewModel : ViewModel() {
             fuelLoopStatus = FuelLoopStatus.CLOSED_LOOP_NORMAL
         )
 
-        // Simulated DTC P0303 - Cylinder 3 Misfire Detected
-        val p0303Dtc = DtcDatabase.lookup("P0303", DtcCategory.STORED, jeepProfile)
-        _troubleCodes.value = listOf(p0303Dtc)
-
-        _freezeFrameData.value = FreezeFrameData(
-            dtcCode = "P0303",
-            rpm = 2450.0,
-            speedKmh = 72.4,
-            coolantCelsius = 90.0,
-            loadPercent = 38.5,
-            fuelTrimB1 = 3.2,
-            throttlePercent = 22.0,
-            intakeAirCelsius = 28.0,
-            mapKpa = 42.0,
-            fuelLoopStatus = FuelLoopStatus.CLOSED_LOOP_NORMAL
-        )
-        _sensorReadings.value = ObdPidCatalog.demoReadings()
-        val alreadySaved = offerSaveIfNew(jeepProfile, "CALID_JEEP_36L_2015", "CVN98765")
+        _troubleCodes.value = scenario.codes.map { entry ->
+            // Demo names a make from the VIN only. Shop notes stay generic until the user names the engine.
+            DtcDatabase.lookup(entry.code, entry.category, null)
+        }
+        _freezeFrameData.value = scenario.freezeFrame
+        val milLabel = if (demoStoredCount == 1) "1 code" else "$demoStoredCount codes"
+        _sensorReadings.value = ObdPidCatalog.demoReadings().map { reading ->
+            when (reading.pid) {
+                0x01 -> reading.copy(text = if (demoMilOn) "MIL on · $milLabel" else "MIL off · 0 codes")
+                0x02 -> reading.copy(text = demoPrimaryCode)
+                else -> reading
+            }
+        }
+        val alreadySaved = offerSaveIfNew(scenario.profile, scenario.calibrationId, scenario.cvn)
         if (!offerSave && !alreadySaved) {
             _vehicleSaveOffer.value = null
         }
         startDemoLiveRead()
+    }
+
+    private fun newDemoScenario(): DemoScenario {
+        var scenario: DemoScenario
+        do {
+            scenario = rollDemoScenario()
+        } while (scenario.signature == lastDemoSignature)
+        lastDemoSignature = scenario.signature
+        return scenario
+    }
+
+    private fun rollDemoScenario(): DemoScenario {
+        val profile = VinDecoder.decode(rollDemoVin())
+        val count = Random.nextInt(1, 5)
+        val picked = demoCodePool.shuffled().take(count)
+        val codes = picked.map { code -> DemoCode(code, DtcCategory.STORED) }
+        val primary = codes.first().code
+        val freezeFrame = FreezeFrameData(
+            dtcCode = primary,
+            rpm = Random.nextDouble(650.0, 3600.0),
+            speedKmh = Random.nextDouble(0.0, 120.0),
+            coolantCelsius = Random.nextDouble(60.0, 108.0),
+            loadPercent = Random.nextDouble(12.0, 80.0),
+            fuelTrimB1 = Random.nextDouble(-10.0, 15.0),
+            throttlePercent = Random.nextDouble(5.0, 55.0),
+            intakeAirCelsius = Random.nextDouble(5.0, 45.0),
+            mapKpa = Random.nextDouble(25.0, 95.0),
+            fuelLoopStatus = FuelLoopStatus.CLOSED_LOOP_NORMAL
+        )
+        return DemoScenario(
+            profile = profile,
+            calibrationId = "CAL" + List(8) { demoVinAlphabet.random() }.joinToString(""),
+            cvn = List(8) { "0123456789ABCDEF".random() }.joinToString(""),
+            codes = codes,
+            freezeFrame = freezeFrame
+        )
+    }
+
+    private fun rollDemoVin(): String {
+        val chars = CharArray(17)
+        demoWmis.random().forEachIndexed { index, char -> chars[index] = char }
+        for (index in 3..7) chars[index] = demoVinAlphabet.random()
+        chars[9] = demoYearChars.random()
+        chars[10] = demoVinAlphabet.random()
+        for (index in 11..16) chars[index] = demoVinAlphabet.random()
+        chars[8] = vinCheckDigit(chars)
+        return String(chars)
+    }
+
+    private fun vinCheckDigit(chars: CharArray): Char {
+        val weights = intArrayOf(8, 7, 6, 5, 4, 3, 2, 10, 0, 9, 8, 7, 6, 5, 4, 3, 2)
+        var sum = 0
+        for (index in chars.indices) {
+            sum += vinTransliterate(chars[index]) * weights[index]
+        }
+        val remainder = sum % 11
+        return if (remainder == 10) 'X' else ('0' + remainder)
+    }
+
+    private fun vinTransliterate(char: Char): Int {
+        if (char.isDigit()) return char - '0'
+        return when (char) {
+            'A', 'J' -> 1
+            'B', 'K', 'S' -> 2
+            'C', 'L', 'T' -> 3
+            'D', 'M', 'U' -> 4
+            'E', 'N', 'V' -> 5
+            'F', 'W' -> 6
+            'G', 'P', 'X' -> 7
+            'H', 'Y' -> 8
+            'R', 'Z' -> 9
+            else -> 0
+        }
     }
 
     fun disconnect() {
@@ -299,6 +385,7 @@ class ObdScannerViewModel : ViewModel() {
         _freezeFrameData.value = null
         _adapterInfo.value = ObdAdapterInfo()
         clearSensorCache()
+        demoScenario = null
         restoreActiveSavedVehicle()
         _statusMessage.value = "Disconnected."
     }
@@ -885,6 +972,11 @@ class ObdScannerViewModel : ViewModel() {
                 0x0F -> reading.copy(number = metrics.intakeAirTempCelsius)
                 0x10 -> reading.copy(number = metrics.mafGps)
                 0x11 -> reading.copy(number = metrics.throttlePercent)
+                0x01 -> {
+                    val label = if (demoStoredCount == 1) "1 code" else "$demoStoredCount codes"
+                    reading.copy(text = if (demoMilOn) "MIL on · $label" else "MIL off · 0 codes")
+                }
+                0x02 -> reading.copy(text = demoPrimaryCode)
                 0x14 -> reading.copy(text = o2Text(metrics.o2b1s1, metrics.stftBank1))
                 0x15 -> reading.copy(text = o2Text(metrics.o2b1s2, metrics.stftBank1))
                 0x18 -> reading.copy(text = o2Text(metrics.o2b2s1, metrics.stftBank2))
@@ -911,8 +1003,8 @@ class ObdScannerViewModel : ViewModel() {
             loadPercent = load,
             throttlePercent = (22.0 + sin(time * 0.18) * 1.4).coerceAtLeast(0.0),
             batteryVoltage = 13.8 + sin(time * 0.15) * 0.08,
-            milOn = true,
-            dtcCount = 1,
+            milOn = demoMilOn,
+            dtcCount = demoStoredCount,
             stftBank1 = stft1,
             ltftBank1 = 1.5 + sin(time * 0.04) * 0.3,
             stftBank2 = stft2,
@@ -1070,6 +1162,23 @@ class ObdScannerViewModel : ViewModel() {
                 delay(300)
             }
         }
+    }
+
+    private data class DemoCode(val code: String, val category: DtcCategory)
+
+    private data class DemoScenario(
+        val profile: VehicleProfile,
+        val calibrationId: String,
+        val cvn: String,
+        val codes: List<DemoCode>,
+        val freezeFrame: FreezeFrameData
+    ) {
+        val signature: String
+            get() = profile.vin + "|" + codes.joinToString(",") { "${it.code}:${it.category}" }
+        val storedCount: Int
+            get() = codes.count { it.category == DtcCategory.STORED }
+        val primaryCode: String
+            get() = codes.first { it.category == DtcCategory.STORED }.code
     }
 
     override fun onCleared() {

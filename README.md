@@ -13,7 +13,7 @@ The app stays generic until a VIN identifies the manufacturer, or you name the v
 - Stored, pending, and permanent trouble codes, with plain-language descriptions. Make-specific notes appear only when the saved make, and where needed the engine, match. Codes can be cleared from the app.
 - Freeze frame: the snapshot the engine computer stored when a fault was set, including speed, coolant, load, fuel trim, and related readings. The same snapshot is included in the PDF report.
 - Vehicle profiles stored on the phone. A 17-character VIN is read after connect. A specific manufacturer code names the make and year. Model and engine stay blank until you enter them. Each profile can hold a plate number and a phone number. More than one vehicle can be saved.
-- Demo Mode simulates a connected car with moving gauges, an O2 waveform, fuel trim, a stored misfire code, and freeze frame, without an adapter.
+- Demo Mode simulates a connected car with moving gauges, an O2 waveform, fuel trim, a random VIN, a random set of stored trouble codes, and freeze frame, without an adapter.
 - Selectable speed and temperature units, chosen separately: km/h or mph, and °C or °F. Miles, psi, gal/h, and lb-ft follow the speed choice. The acceleration timer is 0–60 mph or 0–100 km/h to match.
 - CSV log of the live poll, and a camera preview with a telemetry overlay for RPM, speed, coolant, intake temperature, loop status, and the O2 trace.
 - On startup, the app reads the version file from the download server. If that version code is higher than the installed app, it offers a direct download link.
