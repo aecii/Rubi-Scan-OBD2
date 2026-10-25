@@ -67,15 +67,16 @@ import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.content.ContextCompat
 import androidx.core.content.FileProvider
 import androidx.lifecycle.compose.LocalLifecycleOwner
+import com.example.obdscanner.model.DisplayUnits
 import com.example.obdscanner.model.LiveMetrics
-import com.example.obdscanner.model.UnitSystem
+import com.example.obdscanner.model.SpeedUnit
 import java.io.File
 
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun PerformanceAndVideoScreen(
     metrics: LiveMetrics,
-    unitSystem: UnitSystem,
+    units: DisplayUnits,
     isLoggingCsv: Boolean,
     csvSampleCount: Int,
     onToggleCsvLogging: () -> Unit,
@@ -92,8 +93,11 @@ fun PerformanceAndVideoScreen(
     var showIat by remember { mutableStateOf(true) }
     var showAmbientTemp by remember { mutableStateOf(true) }
 
-    // Performance Test State (0-60 mph / 1/4 mile)
-    var testStatus by remember { mutableStateOf("Stopped. Ready for 0-60 mph launch.") }
+    // Performance Test State (0-60 mph, or 0-100 km/h when speed is metric)
+    val useMph = units.speed == SpeedUnit.MPH
+    val targetSpeed = if (useMph) 60.0 else 100.0
+    val targetLabel = if (useMph) "60 mph" else "100 km/h"
+    var testStatus by remember { mutableStateOf("Stopped. Ready for 0-$targetLabel launch.") }
     var isTimerRunning by remember { mutableStateOf(false) }
     var startTimeMs by remember { mutableStateOf(0L) }
     var zeroToSixtySec by remember { mutableStateOf<Double?>(null) }
@@ -101,17 +105,25 @@ fun PerformanceAndVideoScreen(
     var peakGForce by remember { mutableDoubleStateOf(0.0) }
 
     val speedMph = (metrics.speedKmh ?: 0.0) * 0.621371
+    val speedShown = if (useMph) speedMph else (metrics.speedKmh ?: 0.0)
     currentSpeedMph = speedMph
 
+    LaunchedEffect(units.speed) {
+        isTimerRunning = false
+        zeroToSixtySec = null
+        peakGForce = 0.0
+        testStatus = "Stopped. Ready for 0-$targetLabel launch."
+    }
+
     // Auto Performance Launch Logic
-    LaunchedEffect(speedMph) {
+    LaunchedEffect(speedShown, units.speed) {
         if (!isTimerRunning && zeroToSixtySec == null) {
-            if (speedMph < 1.0) {
-                testStatus = "Vehicle stopped (0 mph). Floor gas pedal to launch test!"
-            } else if (speedMph >= 1.0) {
+            if (speedShown < 1.0) {
+                testStatus = "Vehicle stopped (0 ${units.speed.label}). Floor gas pedal to launch test!"
+            } else if (speedShown >= 1.0) {
                 isTimerRunning = true
                 startTimeMs = System.currentTimeMillis()
-                testStatus = "LAUNCH DETECTED! Accelerating to 60 mph…"
+                testStatus = "LAUNCH DETECTED! Accelerating to $targetLabel…"
             }
         } else if (isTimerRunning) {
             val elapsed = (System.currentTimeMillis() - startTimeMs) / 1000.0
@@ -120,12 +132,12 @@ fun PerformanceAndVideoScreen(
                 peakGForce = estimatedG
             }
 
-            if (speedMph >= 60.0 && zeroToSixtySec == null) {
+            if (speedShown >= targetSpeed && zeroToSixtySec == null) {
                 zeroToSixtySec = elapsed
                 isTimerRunning = false
-                testStatus = "0-60 mph Complete: %.2f seconds! Peak G: %.2f G".format(elapsed, peakGForce)
+                testStatus = "0-$targetLabel Complete: %.2f seconds! Peak G: %.2f G".format(elapsed, peakGForce)
             } else {
-                testStatus = "Accelerating... Current Speed: %.0f mph (%.1fs)".format(speedMph, elapsed)
+                testStatus = "Accelerating... Current Speed: %.0f ${units.speed.label} (%.1fs)".format(speedShown, elapsed)
             }
         }
     }
@@ -159,7 +171,7 @@ fun PerformanceAndVideoScreen(
                             isTimerRunning = false
                             zeroToSixtySec = null
                             peakGForce = 0.0
-                            testStatus = "Reset complete. Stop vehicle (0 mph) for next launch."
+                            testStatus = "Reset complete. Stop vehicle (0 ${units.speed.label}) for next launch."
                         }
                     ) {
                         Icon(Icons.Default.Refresh, contentDescription = null, modifier = Modifier.size(16.dp))
@@ -175,7 +187,7 @@ fun PerformanceAndVideoScreen(
                     horizontalArrangement = Arrangement.SpaceBetween
                 ) {
                     Column {
-                        Text("0 - 60 mph Time", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        Text("0 - $targetLabel Time", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
                         Text(
                             text = zeroToSixtySec?.let { "%.2f s".format(it) } ?: if (isTimerRunning) "Timing..." else "—",
                             style = MaterialTheme.typography.headlineLarge,
@@ -287,7 +299,7 @@ fun PerformanceAndVideoScreen(
 
                 CameraHudViewfinder(
                     metrics = metrics,
-                    unitSystem = unitSystem,
+                    units = units,
                     showSpeed = showSpeed,
                     showCoolant = showCoolant,
                     showMil = showMil,
@@ -304,7 +316,7 @@ fun PerformanceAndVideoScreen(
 @Composable
 private fun CameraHudViewfinder(
     metrics: LiveMetrics,
-    unitSystem: UnitSystem,
+    units: DisplayUnits,
     showSpeed: Boolean,
     showCoolant: Boolean,
     showMil: Boolean,
@@ -381,10 +393,7 @@ private fun CameraHudViewfinder(
 
                     Column(horizontalAlignment = Alignment.End) {
                         if (showSpeed) {
-                            val speedVal = metrics.speedKmh?.let {
-                                if (unitSystem == UnitSystem.IMPERIAL) "%.0f mph".format(it * 0.621371)
-                                else "%.0f km/h".format(it)
-                            } ?: "0 mph"
+                            val speedVal = metrics.speedKmh?.let { units.formatSpeed(it) } ?: units.formatSpeed(0.0)
 
                             Text(speedVal, style = MaterialTheme.typography.headlineLarge, color = Color(0xFF29B6F6))
                         }
@@ -427,14 +436,14 @@ private fun CameraHudViewfinder(
                     Column {
                         if (showCoolant) {
                             Text(
-                                "COOLANT: ${metrics.coolantCelsius?.let { "%.0f °C".format(it) } ?: "—"}",
+                                "COOLANT: ${units.formatTemperature(metrics.coolantCelsius)}",
                                 style = MaterialTheme.typography.labelSmall,
                                 color = Color.White
                             )
                         }
                         if (showIat) {
                             Text(
-                                "IAT: ${metrics.intakeAirTempCelsius?.let { "%.0f °C".format(it) } ?: "—"}",
+                                "IAT: ${units.formatTemperature(metrics.intakeAirTempCelsius)}",
                                 style = MaterialTheme.typography.labelSmall,
                                 color = Color.Cyan
                             )

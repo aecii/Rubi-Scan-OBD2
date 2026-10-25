@@ -83,7 +83,7 @@ fun ObdScannerApp(
     val vehicleSaveOffer by viewModel.vehicleSaveOffer.collectAsState()
     val vehicleInfo by viewModel.vehicleInfo.collectAsState()
     val adapterInfo by viewModel.adapterInfo.collectAsState()
-    val unitSystem by viewModel.unitSystem.collectAsState()
+    val displayUnits by viewModel.displayUnits.collectAsState()
     val appTheme by viewModel.appTheme.collectAsState()
     val o2DisplayMode by viewModel.o2DisplayMode.collectAsState()
     val o2History by viewModel.o2History.collectAsState()
@@ -310,15 +310,16 @@ fun ObdScannerApp(
                     when (selectedTab) {
                         0 -> DashboardScreen(
                             metrics = liveMetrics,
-                            unitSystem = unitSystem,
+                            units = displayUnits,
                             o2DisplayMode = o2DisplayMode,
                             o2History = o2History,
-                            onToggleUnits = { viewModel.toggleUnitSystem() },
+                            onSetSpeedUnit = { viewModel.setSpeedUnit(it) },
+                            onSetTemperatureUnit = { viewModel.setTemperatureUnit(it) },
                             onSetO2DisplayMode = { viewModel.setO2DisplayMode(it) }
                         )
                         1 -> SensorListScreen(
                             readings = sensorReadings,
-                            unitSystem = unitSystem,
+                            units = displayUnits,
                             isConnected = isConnected
                         )
                         2 -> TroubleCodesScreen(
@@ -327,7 +328,7 @@ fun ObdScannerApp(
                             plateNumber = vehicleInfo.plateNumber,
                             phoneNumber = vehicleInfo.phoneNumber,
                             freezeFrame = freezeFrame,
-                            unitSystem = unitSystem,
+                            units = displayUnits,
                             isConnected = isConnected,
                             isReading = isReadingCodes,
                             onReadCodes = { viewModel.readTroubleCodes() },
@@ -336,7 +337,7 @@ fun ObdScannerApp(
                         )
                         3 -> PerformanceAndVideoScreen(
                             metrics = liveMetrics,
-                            unitSystem = unitSystem,
+                            units = displayUnits,
                             isLoggingCsv = isLoggingCsv,
                             csvSampleCount = csvSampleCount,
                             onToggleCsvLogging = { viewModel.toggleCsvLogging() },
@@ -346,6 +347,9 @@ fun ObdScannerApp(
                             adapterInfo = adapterInfo,
                             appTheme = appTheme,
                             onSetAppTheme = { viewModel.setAppTheme(it) },
+                            units = displayUnits,
+                            onSetSpeedUnit = { viewModel.setSpeedUnit(it) },
+                            onSetTemperatureUnit = { viewModel.setTemperatureUnit(it) },
                             vehicles = savedVehicles,
                             activeVehicleId = activeVehicleId,
                             onSelectVehicle = { viewModel.selectVehicle(it) },

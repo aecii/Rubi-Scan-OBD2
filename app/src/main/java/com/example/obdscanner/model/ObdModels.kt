@@ -184,9 +184,52 @@ sealed interface ConnectionState {
     data class Error(val message: String) : ConnectionState
 }
 
-enum class UnitSystem {
-    METRIC,
-    IMPERIAL
+enum class SpeedUnit(val label: String) {
+    KMH("km/h"),
+    MPH("mph")
+}
+
+enum class TemperatureUnit(val label: String) {
+    CELSIUS("°C"),
+    FAHRENHEIT("°F")
+}
+
+data class DisplayUnits(
+    val speed: SpeedUnit = SpeedUnit.MPH,
+    val temperature: TemperatureUnit = TemperatureUnit.FAHRENHEIT
+) {
+    fun formatSpeed(kmh: Double?): String {
+        if (kmh == null) return "—"
+        return when (speed) {
+            SpeedUnit.MPH -> "%.0f mph".format(kmh * 0.621371)
+            SpeedUnit.KMH -> "%.0f km/h".format(kmh)
+        }
+    }
+
+    fun formatTemperature(celsius: Double?): String {
+        if (celsius == null) return "—"
+        return when (temperature) {
+            TemperatureUnit.FAHRENHEIT -> "%.0f °F".format((celsius * 9.0 / 5.0) + 32.0)
+            TemperatureUnit.CELSIUS -> "%.0f °C".format(celsius)
+        }
+    }
+
+    fun formatPressure(kpa: Double?): String {
+        if (kpa == null) return "—"
+        return if (speed == SpeedUnit.MPH) "%.1f psi".format(kpa * 0.145038) else "%.0f kPa".format(kpa)
+    }
+
+    fun formatDistanceKm(km: Double): String {
+        return if (speed == SpeedUnit.MPH) "%.0f mi".format(km * 0.621371) else "%.0f km".format(km)
+    }
+
+    fun formatFuelRate(litersPerHour: Double): String {
+        return if (speed == SpeedUnit.MPH) "%.1f gal/h".format(litersPerHour * 0.264172) else "%.1f L/h".format(litersPerHour)
+    }
+
+    fun formatTorque(newtonMeters: Double): String {
+        return if (speed == SpeedUnit.MPH) "%.0f lb-ft".format(newtonMeters * 0.737562) else "%.0f Nm".format(newtonMeters)
+    }
 }
 
 enum class SensorKind {

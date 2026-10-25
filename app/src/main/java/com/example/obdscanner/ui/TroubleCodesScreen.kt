@@ -58,7 +58,7 @@ import com.example.obdscanner.model.DrivingCriticality
 import com.example.obdscanner.model.DtcCategory
 import com.example.obdscanner.model.DtcCode
 import com.example.obdscanner.model.FreezeFrameData
-import com.example.obdscanner.model.UnitSystem
+import com.example.obdscanner.model.DisplayUnits
 import com.example.obdscanner.obd.VehicleProfile
 import java.io.File
 
@@ -69,7 +69,7 @@ fun TroubleCodesScreen(
     plateNumber: String = "",
     phoneNumber: String = "",
     freezeFrame: FreezeFrameData?,
-    unitSystem: UnitSystem,
+    units: DisplayUnits,
     isConnected: Boolean,
     isReading: Boolean,
     onReadCodes: () -> Unit,
@@ -236,7 +236,7 @@ fun TroubleCodesScreen(
             val snapshot = freezeFrame
             if (snapshot != null) {
                 item(key = "freeze-frame") {
-                    FreezeFrameCard(freezeFrame = snapshot, unitSystem = unitSystem)
+                    FreezeFrameCard(freezeFrame = snapshot, units = units)
                 }
             }
             if (codes.isEmpty()) {
@@ -267,23 +267,7 @@ fun TroubleCodesScreen(
 }
 
 @Composable
-private fun FreezeFrameCard(freezeFrame: FreezeFrameData, unitSystem: UnitSystem) {
-    val imperial = unitSystem == UnitSystem.IMPERIAL
-    fun temp(celsius: Double?) = when {
-        celsius == null -> "—"
-        imperial -> "%.0f °F".format((celsius * 9.0 / 5.0) + 32.0)
-        else -> "%.0f °C".format(celsius)
-    }
-    fun speed(kmh: Double?) = when {
-        kmh == null -> "—"
-        imperial -> "%.0f mph".format(kmh * 0.621371)
-        else -> "%.0f km/h".format(kmh)
-    }
-    fun pressure(kpa: Double?) = when {
-        kpa == null -> "—"
-        imperial -> "%.1f psi".format(kpa * 0.145038)
-        else -> "%.0f kPa".format(kpa)
-    }
+private fun FreezeFrameCard(freezeFrame: FreezeFrameData, units: DisplayUnits) {
 
     Card(modifier = Modifier.fillMaxWidth()) {
         Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
@@ -296,13 +280,13 @@ private fun FreezeFrameCard(freezeFrame: FreezeFrameData, unitSystem: UnitSystem
             HorizontalDivider(modifier = Modifier.padding(vertical = 4.dp))
             FreezeFrameRow("Fault", freezeFrame.dtcCode)
             FreezeFrameRow("Engine speed", freezeFrame.rpm?.let { "%.0f rpm".format(it) } ?: "—")
-            FreezeFrameRow("Vehicle speed", speed(freezeFrame.speedKmh))
-            FreezeFrameRow("Coolant", temp(freezeFrame.coolantCelsius))
+            FreezeFrameRow("Vehicle speed", units.formatSpeed(freezeFrame.speedKmh))
+            FreezeFrameRow("Coolant", units.formatTemperature(freezeFrame.coolantCelsius))
             FreezeFrameRow("Engine load", freezeFrame.loadPercent?.let { "%.1f%%".format(it) } ?: "—")
             FreezeFrameRow("Short fuel trim", freezeFrame.fuelTrimB1?.let { "%+.1f%%".format(it) } ?: "—")
             FreezeFrameRow("Throttle", freezeFrame.throttlePercent?.let { "%.1f%%".format(it) } ?: "—")
-            FreezeFrameRow("Intake air", temp(freezeFrame.intakeAirCelsius))
-            FreezeFrameRow("Manifold pressure", pressure(freezeFrame.mapKpa))
+            FreezeFrameRow("Intake air", units.formatTemperature(freezeFrame.intakeAirCelsius))
+            FreezeFrameRow("Manifold pressure", units.formatPressure(freezeFrame.mapKpa))
             FreezeFrameRow("Fuel system", freezeFrame.fuelLoopStatus?.title ?: "—")
         }
     }

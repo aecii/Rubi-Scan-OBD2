@@ -25,7 +25,6 @@ import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
@@ -36,18 +35,21 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.unit.dp
+import com.example.obdscanner.model.DisplayUnits
 import com.example.obdscanner.model.LiveMetrics
 import com.example.obdscanner.model.O2DisplayMode
 import com.example.obdscanner.model.O2Sample
-import com.example.obdscanner.model.UnitSystem
+import com.example.obdscanner.model.SpeedUnit
+import com.example.obdscanner.model.TemperatureUnit
 
 @Composable
 fun DashboardScreen(
     metrics: LiveMetrics,
-    unitSystem: UnitSystem,
+    units: DisplayUnits,
     o2DisplayMode: O2DisplayMode,
     o2History: List<O2Sample>,
-    onToggleUnits: () -> Unit,
+    onSetSpeedUnit: (SpeedUnit) -> Unit,
+    onSetTemperatureUnit: (TemperatureUnit) -> Unit,
     onSetO2DisplayMode: (O2DisplayMode) -> Unit
 ) {
     Column(
@@ -74,16 +76,12 @@ fun DashboardScreen(
             }
         }
 
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Text("Real-Time Engine Telemetry", style = MaterialTheme.typography.titleLarge)
-            OutlinedButton(onClick = onToggleUnits) {
-                Text(if (unitSystem == UnitSystem.IMPERIAL) "Units: Imperial (°F, mph)" else "Units: Metric (°C, km/h)")
-            }
-        }
+        Text("Real-Time Engine Telemetry", style = MaterialTheme.typography.titleLarge)
+        UnitSelectorRow(
+            units = units,
+            onSetSpeedUnit = onSetSpeedUnit,
+            onSetTemperatureUnit = onSetTemperatureUnit
+        )
 
         // Gauges Row 1 (RPM & Speed)
         Row(horizontalArrangement = Arrangement.spacedBy(12.dp), modifier = Modifier.fillMaxWidth()) {
@@ -95,10 +93,7 @@ fun DashboardScreen(
                 modifier = Modifier.weight(1f)
             )
 
-            val speedVal = metrics.speedKmh?.let {
-                if (unitSystem == UnitSystem.IMPERIAL) "%.0f mph".format(it * 0.621371)
-                else "%.0f km/h".format(it)
-            } ?: "—"
+            val speedVal = units.formatSpeed(metrics.speedKmh)
 
             MetricGaugeCard(
                 title = "Vehicle Speed",
@@ -129,10 +124,7 @@ fun DashboardScreen(
 
         // Gauges Row 3 (Pressure & Mass Air Flow)
         Row(horizontalArrangement = Arrangement.spacedBy(12.dp), modifier = Modifier.fillMaxWidth()) {
-            val mapVal = metrics.mapKpa?.let {
-                if (unitSystem == UnitSystem.IMPERIAL) "%.1f psi".format(it * 0.145038)
-                else "%.0f kPa".format(it)
-            } ?: "—"
+            val mapVal = units.formatPressure(metrics.mapKpa)
 
             MetricGaugeCard(
                 title = "Manifold Pressure (MAP)",
@@ -156,10 +148,7 @@ fun DashboardScreen(
         Text("Engine Temperatures", style = MaterialTheme.typography.titleLarge)
 
         Row(horizontalArrangement = Arrangement.spacedBy(12.dp), modifier = Modifier.fillMaxWidth()) {
-            val coolantVal = metrics.coolantCelsius?.let {
-                if (unitSystem == UnitSystem.IMPERIAL) "%.0f °F".format((it * 9.0 / 5.0) + 32.0)
-                else "%.0f °C".format(it)
-            } ?: "—"
+            val coolantVal = units.formatTemperature(metrics.coolantCelsius)
 
             MetricGaugeCard(
                 title = "Engine Coolant Temp",
@@ -168,10 +157,7 @@ fun DashboardScreen(
                 modifier = Modifier.weight(1f)
             )
 
-            val iatVal = metrics.intakeAirTempCelsius?.let {
-                if (unitSystem == UnitSystem.IMPERIAL) "%.0f °F".format((it * 9.0 / 5.0) + 32.0)
-                else "%.0f °C".format(it)
-            } ?: "—"
+            val iatVal = units.formatTemperature(metrics.intakeAirTempCelsius)
 
             MetricGaugeCard(
                 title = "Intake Air Temp (IAT)",
@@ -266,6 +252,35 @@ fun DashboardScreen(
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant
         )
+    }
+}
+
+@Composable
+fun UnitSelectorRow(
+    units: DisplayUnits,
+    onSetSpeedUnit: (SpeedUnit) -> Unit,
+    onSetTemperatureUnit: (TemperatureUnit) -> Unit
+) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(6.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        SpeedUnit.entries.forEach { unit ->
+            FilterChip(
+                selected = units.speed == unit,
+                onClick = { onSetSpeedUnit(unit) },
+                label = { Text(unit.label) }
+            )
+        }
+        Spacer(Modifier.width(8.dp))
+        TemperatureUnit.entries.forEach { unit ->
+            FilterChip(
+                selected = units.temperature == unit,
+                onClick = { onSetTemperatureUnit(unit) },
+                label = { Text(unit.label) }
+            )
+        }
     }
 }
 

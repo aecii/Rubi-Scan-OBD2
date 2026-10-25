@@ -48,6 +48,9 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.unit.dp
 import com.example.obdscanner.model.AppTheme
+import com.example.obdscanner.model.DisplayUnits
+import com.example.obdscanner.model.SpeedUnit
+import com.example.obdscanner.model.TemperatureUnit
 import com.example.obdscanner.model.ObdAdapterInfo
 import com.example.obdscanner.obd.VersionCheck
 import java.text.SimpleDateFormat
@@ -59,6 +62,9 @@ fun AdapterInfoScreen(
     adapterInfo: ObdAdapterInfo,
     appTheme: AppTheme,
     onSetAppTheme: (AppTheme) -> Unit,
+    units: DisplayUnits,
+    onSetSpeedUnit: (SpeedUnit) -> Unit,
+    onSetTemperatureUnit: (TemperatureUnit) -> Unit,
     vehicles: List<SavedVehicle>,
     activeVehicleId: String?,
     onSelectVehicle: (String) -> Unit,
@@ -248,6 +254,13 @@ fun AdapterInfoScreen(
                 }
 
                 HorizontalDivider()
+
+                Text("Speed and temperature:", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                UnitSelectorRow(
+                    units = units,
+                    onSetSpeedUnit = onSetSpeedUnit,
+                    onSetTemperatureUnit = onSetTemperatureUnit
+                )
 
                 Text("Display Theme:", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 Row(

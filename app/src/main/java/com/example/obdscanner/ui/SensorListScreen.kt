@@ -17,14 +17,14 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import com.example.obdscanner.model.DisplayUnits
 import com.example.obdscanner.model.SensorKind
 import com.example.obdscanner.model.SensorReading
-import com.example.obdscanner.model.UnitSystem
 
 @Composable
 fun SensorListScreen(
     readings: List<SensorReading>,
-    unitSystem: UnitSystem,
+    units: DisplayUnits,
     isConnected: Boolean
 ) {
     val reporting = readings.count { it.number != null || it.text != null }
@@ -65,7 +65,7 @@ fun SensorListScreen(
                     .weight(1f)
             ) {
                 items(readings, key = { it.pid }) { reading ->
-                    SensorRow(reading = reading, unitSystem = unitSystem)
+                    SensorRow(reading = reading, units = units)
                     HorizontalDivider()
                 }
             }
@@ -74,7 +74,7 @@ fun SensorListScreen(
 }
 
 @Composable
-private fun SensorRow(reading: SensorReading, unitSystem: UnitSystem) {
+private fun SensorRow(reading: SensorReading, units: DisplayUnits) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -91,7 +91,7 @@ private fun SensorRow(reading: SensorReading, unitSystem: UnitSystem) {
             )
         }
         Text(
-            text = formatSensor(reading, unitSystem),
+            text = formatSensor(reading, units),
             style = MaterialTheme.typography.titleSmall,
             textAlign = TextAlign.End,
             modifier = Modifier.weight(1f)
@@ -99,52 +99,27 @@ private fun SensorRow(reading: SensorReading, unitSystem: UnitSystem) {
     }
 }
 
-private fun formatSensor(reading: SensorReading, unitSystem: UnitSystem): String {
+private fun formatSensor(reading: SensorReading, units: DisplayUnits): String {
     reading.text?.let { return it }
     val value = reading.number ?: return "—"
-    val imperial = unitSystem == UnitSystem.IMPERIAL
     return when (reading.kind) {
         SensorKind.RPM -> "%,d rpm".format(value.toInt())
-        SensorKind.SPEED_KMH -> if (imperial) {
-            "%.0f mph".format(value * 0.621371)
-        } else {
-            "%.0f km/h".format(value)
-        }
-        SensorKind.CELSIUS -> if (imperial) {
-            "%.0f °F".format((value * 9.0 / 5.0) + 32.0)
-        } else {
-            "%.0f °C".format(value)
-        }
+        SensorKind.SPEED_KMH -> units.formatSpeed(value)
+        SensorKind.CELSIUS -> units.formatTemperature(value)
         SensorKind.PERCENT -> "%.1f%%".format(value)
         SensorKind.SIGNED_PERCENT -> "%+.1f%%".format(value)
-        SensorKind.KPA -> if (imperial) {
-            "%.1f psi".format(value * 0.145038)
-        } else {
-            "%.0f kPa".format(value)
-        }
+        SensorKind.KPA -> units.formatPressure(value)
         SensorKind.VOLTS -> "%.2f V".format(value)
         SensorKind.O2_VOLTS -> "%.3f V".format(value)
         SensorKind.GRAMS_PER_SEC -> "%.1f g/s".format(value)
         SensorKind.DEGREES -> "%.1f°".format(value)
         SensorKind.SECONDS -> formatDuration(value)
         SensorKind.MINUTES -> "%.0f min".format(value)
-        SensorKind.KILOMETERS -> if (imperial) {
-            "%.0f mi".format(value * 0.621371)
-        } else {
-            "%.0f km".format(value)
-        }
+        SensorKind.KILOMETERS -> units.formatDistanceKm(value)
         SensorKind.COUNT -> "%.0f".format(value)
         SensorKind.RATIO -> "%.3f".format(value)
-        SensorKind.LITERS_PER_HOUR -> if (imperial) {
-            "%.1f gal/h".format(value * 0.264172)
-        } else {
-            "%.1f L/h".format(value)
-        }
-        SensorKind.NEWTON_METERS -> if (imperial) {
-            "%.0f lb-ft".format(value * 0.737562)
-        } else {
-            "%.0f Nm".format(value)
-        }
+        SensorKind.LITERS_PER_HOUR -> units.formatFuelRate(value)
+        SensorKind.NEWTON_METERS -> units.formatTorque(value)
         SensorKind.PASCAL -> "%.0f Pa".format(value)
         null -> "—"
     }

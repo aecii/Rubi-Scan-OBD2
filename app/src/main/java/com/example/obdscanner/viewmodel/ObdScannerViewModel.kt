@@ -17,7 +17,9 @@ import com.example.obdscanner.model.ObdAdapterInfo
 import com.example.obdscanner.model.SavedVehicle
 import com.example.obdscanner.model.SensorKind
 import com.example.obdscanner.model.SensorReading
-import com.example.obdscanner.model.UnitSystem
+import com.example.obdscanner.model.DisplayUnits
+import com.example.obdscanner.model.SpeedUnit
+import com.example.obdscanner.model.TemperatureUnit
 import com.example.obdscanner.model.VehicleInfo
 import com.example.obdscanner.model.VehicleSaveOffer
 import com.example.obdscanner.obd.AvailableUpdate
@@ -101,8 +103,8 @@ class ObdScannerViewModel : ViewModel() {
     private val _adapterInfo = MutableStateFlow(ObdAdapterInfo())
     val adapterInfo: StateFlow<ObdAdapterInfo> = _adapterInfo.asStateFlow()
 
-    private val _unitSystem = MutableStateFlow(UnitSystem.IMPERIAL)
-    val unitSystem: StateFlow<UnitSystem> = _unitSystem.asStateFlow()
+    private val _displayUnits = MutableStateFlow(DisplayUnits())
+    val displayUnits: StateFlow<DisplayUnits> = _displayUnits.asStateFlow()
 
     private val _appTheme = MutableStateFlow(AppTheme.SYSTEM)
     val appTheme: StateFlow<AppTheme> = _appTheme.asStateFlow()
@@ -301,8 +303,12 @@ class ObdScannerViewModel : ViewModel() {
         _statusMessage.value = "Disconnected."
     }
 
-    fun toggleUnitSystem() {
-        _unitSystem.value = if (_unitSystem.value == UnitSystem.IMPERIAL) UnitSystem.METRIC else UnitSystem.IMPERIAL
+    fun setSpeedUnit(unit: SpeedUnit) {
+        _displayUnits.value = _displayUnits.value.copy(speed = unit)
+    }
+
+    fun setTemperatureUnit(unit: TemperatureUnit) {
+        _displayUnits.value = _displayUnits.value.copy(temperature = unit)
     }
 
     fun setAppTheme(theme: AppTheme) {
@@ -348,7 +354,8 @@ class ObdScannerViewModel : ViewModel() {
             adapterInfo = _adapterInfo.value,
             liveMetrics = _liveMetrics.value,
             dtcCodes = _troubleCodes.value,
-            freezeFrame = _freezeFrameData.value
+            freezeFrame = _freezeFrameData.value,
+            units = _displayUnits.value
         )
     }
 

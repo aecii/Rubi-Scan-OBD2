@@ -6,6 +6,7 @@ import android.graphics.Color
 import android.graphics.Paint
 import android.graphics.Typeface
 import android.graphics.pdf.PdfDocument
+import com.example.obdscanner.model.DisplayUnits
 import com.example.obdscanner.model.DrivingCriticality
 import com.example.obdscanner.model.DtcCode
 import com.example.obdscanner.model.FreezeFrameData
@@ -26,7 +27,8 @@ object PdfReportGenerator {
         adapterInfo: ObdAdapterInfo,
         liveMetrics: LiveMetrics,
         dtcCodes: List<DtcCode>,
-        freezeFrame: FreezeFrameData?
+        freezeFrame: FreezeFrameData?,
+        units: DisplayUnits = DisplayUnits()
     ): File? {
         val pdfDocument = PdfDocument()
         val pageInfo = PdfDocument.PageInfo.Builder(595, 842, 1).create() // Standard A4 (595x842 pt)
@@ -93,7 +95,7 @@ object PdfReportGenerator {
         textPaint.textSize = 10f
         textPaint.typeface = Typeface.create(Typeface.DEFAULT, Typeface.NORMAL)
         canvas.drawText(
-            "Fuel Loop: ${liveMetrics.fuelLoopStatus?.title ?: "Open Loop"} | Coolant: ${liveMetrics.coolantCelsius?.let { "%.0f °C".format(it) } ?: "—"}",
+            "Fuel Loop: ${liveMetrics.fuelLoopStatus?.title ?: "Open Loop"} | Coolant: ${units.formatTemperature(liveMetrics.coolantCelsius)}",
             margin + 10f, y + 40f, textPaint
         )
 
@@ -170,9 +172,9 @@ object PdfReportGenerator {
 
             y += 15f
             val lines = listOf(
-                "RPM: ${freezeFrame.rpm?.toInt() ?: "—"}    Speed: ${freezeFrame.speedKmh?.toInt() ?: "—"} km/h    Coolant: ${freezeFrame.coolantCelsius?.toInt() ?: "—"} °C",
+                "RPM: ${freezeFrame.rpm?.toInt() ?: "—"}    Speed: ${units.formatSpeed(freezeFrame.speedKmh)}    Coolant: ${units.formatTemperature(freezeFrame.coolantCelsius)}",
                 "Load: ${freezeFrame.loadPercent?.let { "%.0f%%".format(it) } ?: "—"}    Trim: ${freezeFrame.fuelTrimB1?.let { "%+.1f%%".format(it) } ?: "—"}    Throttle: ${freezeFrame.throttlePercent?.let { "%.0f%%".format(it) } ?: "—"}",
-                "Intake: ${freezeFrame.intakeAirCelsius?.toInt() ?: "—"} °C    MAP: ${freezeFrame.mapKpa?.toInt() ?: "—"} kPa    Fuel: ${freezeFrame.fuelLoopStatus?.title ?: "—"}"
+                "Intake: ${units.formatTemperature(freezeFrame.intakeAirCelsius)}    MAP: ${units.formatPressure(freezeFrame.mapKpa)}    Fuel: ${freezeFrame.fuelLoopStatus?.title ?: "—"}"
             )
             val blockHeight = 12f + (lines.size * 14f)
             paint.color = Color.rgb(245, 245, 245)
