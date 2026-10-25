@@ -16,147 +16,26 @@ object VinDecoder {
         if (cleanVin.length < 11) {
             return VehicleProfile(
                 vin = if (cleanVin.isBlank()) "Unknown" else cleanVin,
-                make = "Generic OBD2 Vehicle",
-                model = "Vehicle",
+                make = "",
+                model = "",
                 year = "Unknown",
-                engine = "Standard Internal Combustion Engine",
+                engine = "",
                 displayName = "Generic OBD2 Vehicle"
             )
         }
 
         val wmi = cleanVin.take(3)
-        val yearChar = cleanVin[9]
-        val vdsChar4 = cleanVin[3]
-        val vdsChar5 = cleanVin[4]
-        val vdsChar8 = cleanVin[7]
+        val yearStr = decodeYear(cleanVin[9])
+        val makeStr = makeFromWmi(wmi)
+        val modelStr = ""
+        val engineStr = ""
 
-        val yearStr = decodeYear(yearChar)
-        var makeStr = "Vehicle"
-        var modelStr = "Vehicle"
-        var engineStr = "Engine"
-
-        // Manufacturer specific decoding
-        when {
-            // Jeep / Chrysler / Dodge / RAM (WMI 1J4, 1C4, 2C4, 3C4, 1D3, 2D3, etc.)
-            wmi.startsWith("1J") || wmi.startsWith("1C") || wmi.startsWith("2C") || wmi.startsWith("3C") || wmi.startsWith("1D") -> {
-                makeStr = "Jeep"
-                if (wmi.startsWith("1C") || wmi.startsWith("2C") || wmi.startsWith("3C")) {
-                    makeStr = when {
-                        vdsChar5 == 'A' || vdsChar5 == 'B' -> "Chrysler"
-                        vdsChar5 == 'D' || vdsChar5 == '3' -> "Dodge"
-                        vdsChar5 == 'R' || vdsChar5 == '6' -> "RAM"
-                        else -> "Jeep"
-                    }
-                }
-
-                if (makeStr == "Jeep" || vdsChar4 == 'H') {
-                    makeStr = "Jeep"
-                    modelStr = when (vdsChar5) {
-                        'J' -> "Wrangler JKU / JK"
-                        'W' -> "Wrangler Rubicon / Sahara"
-                        'E' -> "Grand Cherokee"
-                        'A' -> "Cherokee"
-                        'N' -> "Compass / Patriot"
-                        else -> "Jeep"
-                    }
-                    engineStr = when (vdsChar8) {
-                        'G', 'D', 'E' -> "3.6L V6 Pentastar Engine"
-                        '1', 'S' -> "3.8L V6 Engine"
-                        'B', 'K' -> "2.0L I4 Turbo Engine"
-                        'M', 'V' -> "5.7L V8 HEMI Engine"
-                        else -> ""
-                    }
-                }
-            }
-
-            // Ford (WMI 1FA, 1FB, 1FC, 1FD, 1FM, 1FT, 2FM, 3FA)
-            wmi.startsWith("1F") || wmi.startsWith("2F") || wmi.startsWith("3F") -> {
-                makeStr = "Ford"
-                modelStr = when (vdsChar5) {
-                    'T', 'W' -> "F-150 / Super Duty"
-                    'K', 'U' -> "Explorer"
-                    'E' -> "Escape"
-                    'P' -> "Mustang"
-                    else -> "Ford Truck / SUV"
-                }
-                engineStr = when (vdsChar8) {
-                    'G', '6' -> "3.5L V6 EcoBoost"
-                    'F', '5' -> "5.0L V8 Coyote"
-                    '9', '2' -> "2.7L V6 EcoBoost"
-                    'U', 'X' -> "2.0L EcoBoost"
-                    else -> "Ford Gas Engine"
-                }
-            }
-
-            // General Motors / Chevrolet / GMC (WMI 1G1, 1GC, 1GT, 1G2, 1G6, 2G1, 3G1)
-            wmi.startsWith("1G") || wmi.startsWith("2G") || wmi.startsWith("3G") -> {
-                makeStr = when (wmi) {
-                    "1GT", "2GT" -> "GMC"
-                    "1G6" -> "Cadillac"
-                    "1G3" -> "Oldsmobile"
-                    "1G4" -> "Buick"
-                    else -> "Chevrolet"
-                }
-                modelStr = when (vdsChar5) {
-                    'C' -> "Silverado / Sierra"
-                    'K', 'Z' -> "Tahoe / Suburban / Yukon"
-                    '1', '2' -> "Corvette / Camaro"
-                    else -> "GM Truck / SUV"
-                }
-                engineStr = when (vdsChar8) {
-                    'C', 'L', '3' -> "5.3L V8 EcoTec3"
-                    'J', '8' -> "6.2L V8 EcoTec3"
-                    'M', '7' -> "4.3L V6 EcoTec3"
-                    else -> "GM V8 / V6 Engine"
-                }
-            }
-
-            // Toyota / Lexus (WMI 4T1, 5TD, 2T1, JTE, JT2, JTD)
-            wmi.startsWith("4T") || wmi.startsWith("5T") || wmi.startsWith("JT") -> {
-                makeStr = if (wmi.startsWith("JT2") || wmi.startsWith("JTH")) "Lexus" else "Toyota"
-                modelStr = when (vdsChar4) {
-                    'B', 'K' -> "Camry"
-                    'D', 'R' -> "RAV4"
-                    'A', 'G' -> "Tacoma / Tundra"
-                    'J' -> "4Runner"
-                    else -> "Toyota SUV / Sedan"
-                }
-                engineStr = "Toyota V6 / I4 Engine"
-            }
-
-            // Honda / Acura (WMI 1HG, 5FN, 1NY, JHM)
-            wmi.startsWith("1H") || wmi.startsWith("5F") || wmi.startsWith("JH") -> {
-                makeStr = if (wmi.startsWith("1NY") || wmi.startsWith("JH4")) "Acura" else "Honda"
-                modelStr = "Honda Civic / Accord / CR-V / Pilot"
-                engineStr = "Honda i-VTEC Engine"
-            }
-
-            // Nissan / Infiniti (WMI 1N4, 5N1, JN1)
-            wmi.startsWith("1N") || wmi.startsWith("5N") || wmi.startsWith("JN") -> {
-                makeStr = "Nissan"
-                modelStr = "Nissan Altima / Rogue / Frontier / Titan"
-                engineStr = "Nissan VQ V6 / QR I4 Engine"
-            }
-
-            else -> {
-                makeStr = "Generic Vehicle"
-                modelStr = "Vehicle"
-                engineStr = "Gasoline / Diesel Engine"
-            }
+        val displayName = when {
+            makeStr.isNotBlank() && yearStr != "Unknown" -> "$yearStr $makeStr"
+            makeStr.isNotBlank() -> makeStr
+            yearStr != "Unknown" -> "$yearStr vehicle"
+            else -> "Generic OBD2 Vehicle"
         }
-
-        val nameParts = buildList {
-            if (yearStr != "Unknown") add(yearStr)
-            add(makeStr)
-            if (modelStr.isNotBlank() && !modelStr.equals(makeStr, ignoreCase = true) && modelStr != "Vehicle") {
-                add(modelStr)
-            }
-        }
-        val displayName = if (engineStr.isNotBlank() && engineStr != "Engine") {
-            "${nameParts.joinToString(" ")} ($engineStr)"
-        } else {
-            nameParts.joinToString(" ")
-        }.trim()
 
         return VehicleProfile(
             vin = cleanVin,
@@ -167,6 +46,107 @@ object VinDecoder {
             displayName = displayName
         )
     }
+
+    /**
+     * Manufacturer from the world manufacturer identifier only.
+     * Model and engine are left blank unless the user names them.
+     * Shared Chrysler-group identifiers such as 1C4 are not treated as a Jeep.
+     */
+    private fun makeFromWmi(wmi: String): String {
+        exactWmi[wmi]?.let { return it }
+        return when {
+            wmi.startsWith("1F") || wmi.startsWith("2F") || wmi.startsWith("3F") -> "Ford"
+            wmi.startsWith("1G") || wmi.startsWith("2G") || wmi.startsWith("3G") -> "General Motors"
+            wmi.startsWith("4T") || wmi.startsWith("5T") || wmi.startsWith("2T") || wmi.startsWith("JT") -> "Toyota"
+            wmi.startsWith("1H") || wmi.startsWith("5F") || wmi.startsWith("JH") -> "Honda"
+            wmi.startsWith("1N") || wmi.startsWith("3N") || wmi.startsWith("5N") || wmi.startsWith("JN") -> "Nissan"
+            else -> ""
+        }
+    }
+
+    private val exactWmi = mapOf(
+        "1J4" to "Jeep",
+        "1J7" to "Jeep",
+        "1J8" to "Jeep",
+        "1C3" to "Chrysler",
+        "2C3" to "Chrysler",
+        "3C3" to "Chrysler",
+        "1C6" to "RAM",
+        "3C6" to "RAM",
+        "3C7" to "RAM",
+        "1B3" to "Dodge",
+        "1B4" to "Dodge",
+        "1B7" to "Dodge",
+        "1D3" to "Dodge",
+        "1D7" to "Dodge",
+        "1D8" to "Dodge",
+        "2D3" to "Dodge",
+        "2D4" to "Dodge",
+        "2D8" to "Dodge",
+        "3D3" to "Dodge",
+        "3D4" to "Dodge",
+        "3D7" to "Dodge",
+        "1G1" to "Chevrolet",
+        "1GB" to "Chevrolet",
+        "1GC" to "Chevrolet",
+        "1GN" to "Chevrolet",
+        "2G1" to "Chevrolet",
+        "3G1" to "Chevrolet",
+        "3GC" to "Chevrolet",
+        "1GK" to "GMC",
+        "1GT" to "GMC",
+        "2GT" to "GMC",
+        "1G4" to "Buick",
+        "1G6" to "Cadillac",
+        "1GY" to "Cadillac",
+        "JTH" to "Lexus",
+        "JTJ" to "Lexus",
+        "JT6" to "Lexus",
+        "JT8" to "Lexus",
+        "19U" to "Acura",
+        "JH4" to "Acura",
+        "5J6" to "Honda",
+        "5FN" to "Honda",
+        "5KB" to "Honda",
+        "1HG" to "Honda",
+        "2HG" to "Honda",
+        "JHM" to "Honda",
+        "JNK" to "Infiniti",
+        "1N4" to "Nissan",
+        "1N6" to "Nissan",
+        "3N1" to "Nissan",
+        "5N1" to "Nissan",
+        "JN1" to "Nissan",
+        "JN8" to "Nissan",
+        "KMH" to "Hyundai",
+        "5NP" to "Hyundai",
+        "5NM" to "Hyundai",
+        "KNA" to "Kia",
+        "KND" to "Kia",
+        "5XX" to "Kia",
+        "WVW" to "Volkswagen",
+        "WVG" to "Volkswagen",
+        "1VW" to "Volkswagen",
+        "3VW" to "Volkswagen",
+        "WAU" to "Audi",
+        "WA1" to "Audi",
+        "WBA" to "BMW",
+        "WBS" to "BMW",
+        "4US" to "BMW",
+        "5UX" to "BMW",
+        "WDD" to "Mercedes-Benz",
+        "WDC" to "Mercedes-Benz",
+        "4JG" to "Mercedes-Benz",
+        "JF1" to "Subaru",
+        "JF2" to "Subaru",
+        "4S3" to "Subaru",
+        "4S4" to "Subaru",
+        "JM1" to "Mazda",
+        "JM3" to "Mazda",
+        "1YV" to "Mazda",
+        "YV1" to "Volvo",
+        "YV4" to "Volvo"
+    )
 
     private fun decodeYear(char: Char): String {
         return when (char) {

@@ -350,8 +350,8 @@ fun ObdScannerApp(
                             activeVehicleId = activeVehicleId,
                             onSelectVehicle = { viewModel.selectVehicle(it) },
                             onDeleteVehicle = { viewModel.deleteVehicle(it) },
-                            onSaveVehicle = { id, name, vin, plate, phone ->
-                                viewModel.saveVehicleForm(id, name, vin, plate, phone)
+                            onSaveVehicle = { id, name, vin, plate, phone, make, model, engine ->
+                                viewModel.saveVehicleForm(id, name, vin, plate, phone, make, model, engine)
                             }
                         )
                     }

@@ -10,6 +10,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
@@ -62,7 +63,16 @@ fun AdapterInfoScreen(
     activeVehicleId: String?,
     onSelectVehicle: (String) -> Unit,
     onDeleteVehicle: (String) -> Unit,
-    onSaveVehicle: (id: String?, name: String, vin: String, plate: String, phone: String) -> Unit
+    onSaveVehicle: (
+        id: String?,
+        name: String,
+        vin: String,
+        plate: String,
+        phone: String,
+        make: String,
+        model: String,
+        engine: String
+    ) -> Unit
 ) {
     val context = LocalContext.current
     val buildDateStr = SimpleDateFormat("MMMM dd, yyyy", Locale.US).format(Date())
@@ -75,8 +85,8 @@ fun AdapterInfoScreen(
         VehicleEditorDialog(
             state = state,
             onDismiss = { editor = null },
-            onSave = { name, vin, plate, phone ->
-                onSaveVehicle(state.id, name, vin, plate, phone)
+            onSave = { name, vin, plate, phone, make, model, engine ->
+                onSaveVehicle(state.id, name, vin, plate, phone, make, model, engine)
                 editor = null
             }
         )
@@ -118,7 +128,7 @@ fun AdapterInfoScreen(
                 }
                 HorizontalDivider()
                 Text(
-                    "Connect and the app reads the VIN. Save each vehicle here with a plate and phone number. Profiles stay on this phone.",
+                    "A connected car stays generic until its VIN identifies the manufacturer, or you enter the make, model, and engine here. Profiles stay on this phone.",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
@@ -165,7 +175,10 @@ fun AdapterInfoScreen(
                                         name = vehicle.displayName,
                                         vin = vehicle.vin,
                                         plate = vehicle.plateNumber,
-                                        phone = vehicle.phoneNumber
+                                        phone = vehicle.phoneNumber,
+                                        make = vehicle.make,
+                                        model = vehicle.model,
+                                        engine = vehicle.engine
                                     )
                                 }) { Text("Edit") }
                                 IconButton(onClick = { pendingDelete = vehicle }) {
@@ -178,7 +191,16 @@ fun AdapterInfoScreen(
                 }
                 OutlinedButton(
                     onClick = {
-                        editor = VehicleEditorState(id = null, name = "", vin = "", plate = "", phone = "")
+                        editor = VehicleEditorState(
+                            id = null,
+                            name = "",
+                            vin = "",
+                            plate = "",
+                            phone = "",
+                            make = "",
+                            model = "",
+                            engine = ""
+                        )
                     },
                     modifier = Modifier.fillMaxWidth()
                 ) { Text("Add vehicle") }
@@ -280,25 +302,36 @@ private data class VehicleEditorState(
     val name: String,
     val vin: String,
     val plate: String,
-    val phone: String
+    val phone: String,
+    val make: String,
+    val model: String,
+    val engine: String
 )
 
 @Composable
 private fun VehicleEditorDialog(
     state: VehicleEditorState,
     onDismiss: () -> Unit,
-    onSave: (name: String, vin: String, plate: String, phone: String) -> Unit
+    onSave: (name: String, vin: String, plate: String, phone: String, make: String, model: String, engine: String) -> Unit
 ) {
     var name by remember(state.id) { mutableStateOf(state.name) }
     var vin by remember(state.id) { mutableStateOf(state.vin) }
     var plate by remember(state.id) { mutableStateOf(state.plate) }
     var phone by remember(state.id) { mutableStateOf(state.phone) }
+    var make by remember(state.id) { mutableStateOf(state.make) }
+    var model by remember(state.id) { mutableStateOf(state.model) }
+    var engine by remember(state.id) { mutableStateOf(state.engine) }
 
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text(if (state.id == null) "Add vehicle" else "Edit vehicle") },
         text = {
-            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Column(
+                modifier = Modifier
+                    .heightIn(max = 420.dp)
+                    .verticalScroll(rememberScrollState()),
+                verticalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
                 OutlinedTextField(
                     value = name,
                     onValueChange = { name = it },
@@ -312,6 +345,27 @@ private fun VehicleEditorDialog(
                     label = { Text("VIN") },
                     singleLine = true,
                     keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.Characters),
+                    modifier = Modifier.fillMaxWidth()
+                )
+                OutlinedTextField(
+                    value = make,
+                    onValueChange = { make = it },
+                    label = { Text("Make") },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth()
+                )
+                OutlinedTextField(
+                    value = model,
+                    onValueChange = { model = it },
+                    label = { Text("Model") },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth()
+                )
+                OutlinedTextField(
+                    value = engine,
+                    onValueChange = { engine = it },
+                    label = { Text("Engine") },
+                    singleLine = true,
                     modifier = Modifier.fillMaxWidth()
                 )
                 OutlinedTextField(
@@ -333,7 +387,7 @@ private fun VehicleEditorDialog(
             }
         },
         confirmButton = {
-            TextButton(onClick = { onSave(name, vin, plate, phone) }) { Text("Save") }
+            TextButton(onClick = { onSave(name, vin, plate, phone, make, model, engine) }) { Text("Save") }
         },
         dismissButton = {
             TextButton(onClick = onDismiss) { Text("Cancel") }

@@ -101,8 +101,8 @@ object DtcDatabase {
             "Small fuel vapor leak detected in EVAP system.",
             "Fuel tank vapor system has a minor leak (often gas cap rubber seal).",
             DrivingCriticality.SERVICE_SOON,
-            listOf("Replace fuel gas cap", "Replace EVAP purge solenoid", "Inspect ESIM switch / canister hoses"),
-            listOf("Loose/defective fuel cap", "Small crack in EVAP hose", "Purge/Vent valve leak"),
+            listOf("Replace fuel gas cap", "Replace EVAP purge solenoid", "Inspect EVAP vent valve and canister hoses"),
+            listOf("Loose/defective fuel cap", "Small crack in EVAP hose", "Purge/vent valve leak"),
             CodeSeverity.INFO
         ),
         "P0456" to DtcDetails(
@@ -110,8 +110,8 @@ object DtcDatabase {
             "Very small EVAP vapor pressure loss detected during engine off test.",
             "Micro pressure leak in fuel vapor recovery system.",
             DrivingCriticality.SERVICE_SOON,
-            listOf("Inspect / replace gas cap O-ring seal", "Replace EVAP ESIM switch", "Replace EVAP purge valve"),
-            listOf("Loose gas cap seal", "EVAP ESIM switch faulty", "Purge solenoid leak"),
+            listOf("Inspect / replace gas cap O-ring seal", "Inspect EVAP vent valve", "Replace EVAP purge valve"),
+            listOf("Loose gas cap seal", "EVAP vent valve faulty", "Purge solenoid leak"),
             CodeSeverity.INFO
         ),
         "P0520" to DtcDetails(
@@ -119,8 +119,8 @@ object DtcDatabase {
             "Oil pressure sensor output voltage is out of normal operating range.",
             "Engine computer detects abnormal oil pressure sensor reading. Check engine oil level on dipstick immediately!",
             DrivingCriticality.CRITICAL_STOP_IMMEDIATELY,
-            listOf("Check & top off engine oil level immediately", "Replace engine oil pressure sensor & connector plug", "Replace oil filter adapter housing assembly"),
-            listOf("Faulty oil pressure sensor", "Oil pressure sensor harness short/open", "Oil filter housing assembly valve failure"),
+            listOf("Check and top off engine oil level immediately", "Inspect the oil pressure sensor and connector", "Check the sensor circuit for a short or open"),
+            listOf("Faulty oil pressure sensor", "Oil pressure sensor harness short or open", "Oil pressure below specification"),
             CodeSeverity.CRITICAL
         )
     )
@@ -170,31 +170,67 @@ object DtcDatabase {
     }
 
     private fun getVehicleSpecificCauses(code: String, vehicle: VehicleProfile): List<String> {
+        val make = knownMake(vehicle) ?: return emptyList()
         val causes = mutableListOf<String>()
-        val make = vehicle.make.uppercase()
+        val label = vehicle.displayName
 
-        when {
-            make.contains("JEEP") || make.contains("CHRYSLER") || make.contains("DODGE") || make.contains("RAM") -> {
-                when (code) {
-                    "P0520" -> causes.add("[WHAT TO CHECK - ${vehicle.displayName}]: Oil pressure sensor failure is extremely common on 3.6L Pentastar engines. Sensor is located in lower engine valley under oil filter adapter housing. Check sensor plug for oil contamination.")
-                    "P0128" -> causes.add("[WHAT TO CHECK - ${vehicle.displayName}]: Thermostat assembly frequently sticks open on Pentastar V6. Check coolant overflow level and replace thermostat housing unit.")
-                    "P0300", "P0301", "P0302", "P0303", "P0304", "P0305", "P0306" -> causes.add("[WHAT TO CHECK - ${vehicle.displayName}]: 1) Inspect ignition coil & spark plug gap. 2) Check for lower intake manifold vacuum leaks. 3) Listen for valve train rocker arm / lifter ticking.")
-                    "P0456", "P0442", "P0455" -> causes.add("[WHAT TO CHECK - ${vehicle.displayName}]: 1) Inspect gas cap rubber seal. 2) Check ESIM switch on charcoal canister near rear axle. 3) Test EVAP purge valve behind intake manifold.")
-                    "P0171", "P0174" -> causes.add("[WHAT TO CHECK - ${vehicle.displayName}]: Check lower intake manifold runner gaskets, PCV valve hose, and brake booster check valve for vacuum leaks.")
+        when (make) {
+            "JEEP" -> {
+                if (isPentastarFamily(vehicle)) {
+                    when (code) {
+                        "P0520" -> causes.add("[WHAT TO CHECK - $label]: Oil pressure sensor failure is common on 3.6L Pentastar engines. The sensor is in the lower engine valley under the oil filter adapter. Check the sensor plug for oil contamination.")
+                        "P0128" -> causes.add("[WHAT TO CHECK - $label]: The thermostat often sticks open on the Pentastar V6. Check the coolant level and the thermostat housing.")
+                        "P0300", "P0301", "P0302", "P0303", "P0304", "P0305", "P0306" -> causes.add("[WHAT TO CHECK - $label]: 1) Inspect the ignition coil and spark plug gap. 2) Check for lower intake manifold vacuum leaks. 3) Listen for rocker arm or lifter tick.")
+                        "P0171", "P0174" -> causes.add("[WHAT TO CHECK - $label]: Check the lower intake manifold runner gaskets, PCV valve hose, and brake booster check valve for vacuum leaks.")
+                    }
+                }
+                if (code == "P0456" || code == "P0442" || code == "P0455") {
+                    causes.add("[WHAT TO CHECK - $label]: 1) Inspect the gas cap seal. 2) Check the ESIM switch on the charcoal canister. 3) Test the EVAP purge valve.")
                 }
             }
-            make.contains("FORD") -> {
-                when (code) {
-                    "P0300", "P0301", "P0302", "P0303", "P0304" -> causes.add("[WHAT TO CHECK - ${vehicle.displayName}]: 1) Inspect spark plug boots for carbon tracking. 2) Test coil packs. 3) Inspect intercooler condensation (EcoBoost engines).")
-                    "P0171", "P0174" -> causes.add("[WHAT TO CHECK - ${vehicle.displayName}]: Check PCV elbow hose, MAF sensor cleanliness, and fuel pressure.")
+            "CHRYSLER", "DODGE", "RAM" -> {
+                if (code == "P0456" || code == "P0442" || code == "P0455") {
+                    causes.add("[WHAT TO CHECK - $label]: 1) Inspect the gas cap seal. 2) Check the ESIM switch on the charcoal canister. 3) Test the EVAP purge valve.")
                 }
             }
-            make.contains("CHEVROLET") || make.contains("GMC") || make.contains("CADILLAC") -> {
+            "FORD" -> {
                 when (code) {
-                    "P0171", "P0174" -> causes.add("[WHAT TO CHECK - ${vehicle.displayName}]: Check intake manifold gaskets, clean MAF sensor with aerosol cleaner, and inspect purge valve.")
+                    "P0300", "P0301", "P0302", "P0303", "P0304" -> {
+                        val extra = if (vehicle.engine.uppercase().contains("ECOBOOST")) {
+                            " 3) On an EcoBoost engine, check the intercooler for condensation."
+                        } else {
+                            ""
+                        }
+                        causes.add("[WHAT TO CHECK - $label]: 1) Inspect the spark plug boots for carbon tracking. 2) Test the coil packs.$extra")
+                    }
+                    "P0171", "P0174" -> causes.add("[WHAT TO CHECK - $label]: Check the PCV elbow hose, MAF sensor, and fuel pressure.")
+                }
+            }
+            "CHEVROLET", "GMC", "CADILLAC" -> {
+                if (code == "P0171" || code == "P0174") {
+                    causes.add("[WHAT TO CHECK - $label]: Check the intake manifold gaskets, clean the MAF sensor, and inspect the purge valve.")
                 }
             }
         }
         return causes
     }
+
+    private fun knownMake(vehicle: VehicleProfile): String? {
+        val make = vehicle.make.trim().uppercase()
+        if (make.isBlank() || make in genericMakes) return null
+        return make
+    }
+
+    private fun isPentastarFamily(vehicle: VehicleProfile): Boolean {
+        val engine = vehicle.engine.uppercase()
+        return engine.contains("PENTASTAR") || engine.contains("3.6")
+    }
+
+    private val genericMakes = setOf(
+        "VEHICLE",
+        "GENERIC VEHICLE",
+        "GENERIC OBD2 VEHICLE",
+        "UNKNOWN",
+        "GENERAL MOTORS"
+    )
 }

@@ -49,7 +49,7 @@ class ObdBluetoothManager {
             "ELM327 v1.5"
         }
 
-        onInitProgress("Configuring CAN protocol settings…")
+        onInitProgress("Configuring the adapter…")
         sendCommand("ATE0", timeoutMs = 1500) // Echo off
         sendCommand("ATL0", timeoutMs = 1500) // Linefeeds off
         sendCommand("ATS1", timeoutMs = 1500) // Spaces on for parsing
@@ -57,7 +57,7 @@ class ObdBluetoothManager {
         sendCommand("ATCAF1", timeoutMs = 1500) // Automatic CAN formatting ON
         sendCommand("ATSP0", timeoutMs = 2000) // Auto protocol search
 
-        onInitProgress("Initializing vehicle CAN bus protocol (0100)…")
+        onInitProgress("Checking which OBD protocol this vehicle uses (0100)…")
         var protocolEstablished = false
         try {
             val initPid = sendCommand("0100", timeoutMs = 5000)
@@ -67,7 +67,7 @@ class ObdBluetoothManager {
         } catch (_: Exception) {}
 
         if (!protocolEstablished) {
-            onInitProgress("Fallback to Jeep/Chrysler CAN 11-bit 500k (ATSP6)…")
+            onInitProgress("Fallback to ISO 15765-4 CAN 11-bit 500k (ATSP6)…")
             try {
                 sendCommand("ATSP6", timeoutMs = 1500) // Force ISO 15765-4 CAN 11bit 500k baud
                 sendCommand("0100", timeoutMs = 3000)
@@ -78,7 +78,7 @@ class ObdBluetoothManager {
         val atdpResponse = try {
             sendCommand("ATDP", timeoutMs = 1500)
         } catch (_: Exception) {
-            "ISO 15765-4 CAN (11bit 500k)"
+            ""
         }
 
         onInitProgress("Querying battery voltage (ATRV)…")
@@ -95,7 +95,7 @@ class ObdBluetoothManager {
         }
 
         val versionClean = atiResponse.replace(">", "").trim()
-        val protocolClean = atdpResponse.replace(">", "").trim().ifBlank { "ISO 15765-4 CAN 11bit 500k" }
+        val protocolClean = atdpResponse.replace(">", "").trim().ifBlank { "Not reported" }
 
         return ObdAdapterInfo(
             name = device.name ?: "OBDLink Adapter",

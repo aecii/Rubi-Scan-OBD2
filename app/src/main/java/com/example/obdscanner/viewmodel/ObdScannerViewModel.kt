@@ -168,6 +168,8 @@ class ObdScannerViewModel : ViewModel() {
 
                 _adapterInfo.value = adapterInfoResult
                 _connectionState.value = ConnectionState.Connected(adapterInfoResult.name)
+                _vehicleInfo.value = VehicleInfo()
+                _vehicleSaveOffer.value = null
                 _statusMessage.value = "Connected to ${adapterInfoResult.name}. Protocol: ${adapterInfoResult.protocol}."
 
                 readVehicleIdentityInternal()
@@ -183,6 +185,7 @@ class ObdScannerViewModel : ViewModel() {
             } catch (e: Exception) {
                 bluetoothManager.disconnect()
                 _connectionState.value = ConnectionState.Error(e.message ?: "Failed to connect")
+                restoreActiveSavedVehicle()
                 _statusMessage.value = "Connection failed: ${e.message ?: "Unknown error"}. Ensure adapter is paired and vehicle key is ON."
             }
         }
@@ -527,7 +530,16 @@ class ObdScannerViewModel : ViewModel() {
         persistVehicles()
     }
 
-    fun saveVehicleForm(id: String?, displayName: String, vin: String, plateNumber: String, phoneNumber: String) {
+    fun saveVehicleForm(
+        id: String?,
+        displayName: String,
+        vin: String,
+        plateNumber: String,
+        phoneNumber: String,
+        make: String = "",
+        model: String = "",
+        engine: String = ""
+    ) {
         val cleanVin = vin.trim().uppercase().filter { it.isLetterOrDigit() }
         val decoded = if (cleanVin.length >= 11) VinDecoder.decode(cleanVin) else null
         val plate = plateNumber.trim().uppercase()
@@ -540,10 +552,10 @@ class ObdScannerViewModel : ViewModel() {
         val vehicle = SavedVehicle(
             id = existing?.id ?: UUID.randomUUID().toString(),
             vin = decoded?.vin?.takeIf { it.length == 17 } ?: cleanVin,
-            year = decoded?.year ?: existing?.year.orEmpty(),
-            make = decoded?.make ?: existing?.make.orEmpty(),
-            model = decoded?.model ?: existing?.model.orEmpty(),
-            engine = decoded?.engine ?: existing?.engine.orEmpty(),
+            year = knownText(decoded?.year) ?: existing?.year.orEmpty(),
+            make = make.trim().ifBlank { knownText(decoded?.make).orEmpty() },
+            model = model.trim().ifBlank { knownText(decoded?.model).orEmpty() },
+            engine = engine.trim().ifBlank { knownText(decoded?.engine).orEmpty() },
             displayName = name,
             plateNumber = plate,
             phoneNumber = phone,
@@ -576,21 +588,30 @@ class ObdScannerViewModel : ViewModel() {
             }
             val cvn = ObdProtocolHandler.decodeCvn(cvnRaw)
             if (vin.length != 17 || vin == "Unavailable") {
-                _statusMessage.value = "The engine computer did not return a VIN. Add the vehicle in Settings if you want a profile."
+                _vehicleInfo.value = VehicleInfo()
+                _statusMessage.value = "The engine computer did not return a VIN. Select a saved vehicle in Settings if you want this car identified."
                 return
             }
             val decoded = VinDecoder.decode(vin)
             val storedCal = calibrationId.takeUnless { it == "Unavailable" }.orEmpty()
             val storedCvn = cvn.takeUnless { it == "Unavailable" } ?: "Not Read"
             val alreadySaved = offerSaveIfNew(decoded, storedCal, storedCvn)
+            val shownName = _vehicleInfo.value.profile?.displayName ?: decoded.displayName
             _statusMessage.value = if (alreadySaved) {
-                "Saved vehicle: ${decoded.displayName}."
+                "Saved vehicle: $shownName."
             } else {
-                "Detected ${decoded.displayName}."
+                "Detected $shownName."
             }
         } finally {
             _isReadingVehicleInfo.value = false
         }
+    }
+
+    private fun knownText(value: String?): String? {
+        val text = value?.trim().orEmpty()
+        if (text.isBlank() || text.equals("Unknown", ignoreCase = true)) return null
+        if (text.equals("Generic OBD2 Vehicle", ignoreCase = true)) return null
+        return text
     }
 
     private fun offerSaveIfNew(profile: VehicleProfile, calibrationId: String, cvn: String = "Not Read"): Boolean {
