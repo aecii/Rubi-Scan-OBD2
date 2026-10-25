@@ -43,6 +43,8 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.File
 import java.io.FileWriter
+import kotlin.math.sin
+import kotlin.math.tanh
 
 class ObdScannerViewModel : ViewModel() {
 
@@ -150,6 +152,8 @@ class ObdScannerViewModel : ViewModel() {
     }
 
     fun connect(device: BluetoothDevice) {
+        pollJob?.cancel()
+        pollJob = null
         if (_isDemoMode.value) {
             _isDemoMode.value = false
         }
@@ -278,6 +282,7 @@ class ObdScannerViewModel : ViewModel() {
         if (!offerSave && !alreadySaved) {
             _vehicleSaveOffer.value = null
         }
+        startDemoLiveRead()
     }
 
     fun disconnect() {
@@ -821,6 +826,105 @@ class ObdScannerViewModel : ViewModel() {
             }
         }
         _sensorReadings.value = list
+    }
+
+    private fun startDemoLiveRead() {
+        pollJob?.cancel()
+        val now = System.currentTimeMillis()
+        val seeded = (0 until 34).map { tick -> demoFrame(tick, now - (33 - tick) * 300L) }
+        _o2History.value = seeded.map { it.first }
+        publishDemoFrame(seeded.last().second)
+        var tick = 34
+        pollJob = viewModelScope.launch(Dispatchers.Default) {
+            while (isActive && _isDemoMode.value) {
+                delay(300)
+                val (sample, metrics) = demoFrame(tick, System.currentTimeMillis())
+                tick++
+                val history = _o2History.value.toMutableList()
+                history.add(sample)
+                if (history.size > 35) history.removeAt(0)
+                _o2History.value = history
+                publishDemoFrame(metrics)
+                if (_isLoggingCsv.value) {
+                    csvLogBuffer.add(
+                        "${sample.timestamp},${metrics.rpm ?: ""},${metrics.speedKmh ?: ""},${metrics.coolantCelsius ?: ""},${metrics.loadPercent ?: ""},${metrics.throttlePercent ?: ""},${metrics.batteryVoltage ?: ""},${metrics.stftBank1 ?: ""},${metrics.ltftBank1 ?: ""},${metrics.stftBank2 ?: ""},${metrics.ltftBank2 ?: ""},${sample.b1s1 ?: ""},${sample.b1s2 ?: ""},${sample.b2s1 ?: ""},${sample.b2s2 ?: ""},${metrics.intakeAirTempCelsius ?: ""},${metrics.mapKpa ?: ""},${metrics.mafGps ?: ""},${metrics.fuelLoopStatus?.codeStr ?: ""}"
+                    )
+                    _csvSampleCount.value = csvLogBuffer.size - 1
+                }
+            }
+        }
+    }
+
+    private fun publishDemoFrame(metrics: LiveMetrics) {
+        _liveMetrics.value = metrics
+        _adapterInfo.value = _adapterInfo.value.copy(
+            voltage = "%.1f V".format(metrics.batteryVoltage ?: 13.8)
+        )
+        fun o2Text(volts: Double?, trim: Double?): String? {
+            if (volts == null || trim == null) return null
+            return "%.3f V · trim %+.1f%%".format(volts, trim)
+        }
+        _sensorReadings.value = _sensorReadings.value.map { reading ->
+            when (reading.pid) {
+                0x04 -> reading.copy(number = metrics.loadPercent)
+                0x05 -> reading.copy(number = metrics.coolantCelsius)
+                0x06 -> reading.copy(number = metrics.stftBank1)
+                0x07 -> reading.copy(number = metrics.ltftBank1)
+                0x08 -> reading.copy(number = metrics.stftBank2)
+                0x09 -> reading.copy(number = metrics.ltftBank2)
+                0x0B -> reading.copy(number = metrics.mapKpa)
+                0x0C -> reading.copy(number = metrics.rpm)
+                0x0D -> reading.copy(number = metrics.speedKmh)
+                0x0F -> reading.copy(number = metrics.intakeAirTempCelsius)
+                0x10 -> reading.copy(number = metrics.mafGps)
+                0x11 -> reading.copy(number = metrics.throttlePercent)
+                0x14 -> reading.copy(text = o2Text(metrics.o2b1s1, metrics.stftBank1))
+                0x15 -> reading.copy(text = o2Text(metrics.o2b1s2, metrics.stftBank1))
+                0x18 -> reading.copy(text = o2Text(metrics.o2b2s1, metrics.stftBank2))
+                0x19 -> reading.copy(text = o2Text(metrics.o2b2s2, metrics.stftBank2))
+                0x42 -> reading.copy(number = metrics.batteryVoltage)
+                else -> reading
+            }
+        }
+    }
+
+    private fun demoFrame(tick: Int, timestamp: Long): Pair<O2Sample, LiveMetrics> {
+        val time = tick * 1.15
+        val b1s1 = demoNarrowband(time, phase = 0.0)
+        val b2s1 = demoNarrowband(time, phase = 2.1, shift = -0.03)
+        val b1s2 = (0.67 + sin(time * 0.08) * 0.02).coerceIn(0.0, 1.0)
+        val b2s2 = (0.63 + sin(time * 0.07 + 0.6) * 0.018).coerceIn(0.0, 1.0)
+        val stft1 = 2.2 + (0.45 - b1s1) * 14.0
+        val stft2 = 1.6 + (0.45 - b2s1) * 14.0
+        val load = 38.5 + sin(time * 0.22) * 2.4
+        val metrics = LiveMetrics(
+            rpm = 2450.0 + sin(time * 0.31) * 45.0,
+            speedKmh = 72.4 + sin(time * 0.12) * 1.8,
+            coolantCelsius = 90.0 + sin(time * 0.02) * 0.6,
+            loadPercent = load,
+            throttlePercent = (22.0 + sin(time * 0.18) * 1.4).coerceAtLeast(0.0),
+            batteryVoltage = 13.8 + sin(time * 0.15) * 0.08,
+            milOn = true,
+            dtcCount = 1,
+            stftBank1 = stft1,
+            ltftBank1 = 1.5 + sin(time * 0.04) * 0.3,
+            stftBank2 = stft2,
+            ltftBank2 = 0.9 + sin(time * 0.035 + 0.4) * 0.25,
+            o2b1s1 = b1s1,
+            o2b1s2 = b1s2,
+            o2b2s1 = b2s1,
+            o2b2s2 = b2s2,
+            intakeAirTempCelsius = 28.0 + sin(time * 0.03) * 0.4,
+            mapKpa = 42.0 + (load - 38.5) * 0.35,
+            mafGps = 18.5 + (load - 38.5) * 0.25,
+            fuelLoopStatus = FuelLoopStatus.CLOSED_LOOP_NORMAL
+        )
+        return O2Sample(timestamp, b1s1, b1s2, b2s1, b2s2) to metrics
+    }
+
+    private fun demoNarrowband(time: Double, phase: Double, shift: Double = 0.0): Double {
+        val shaped = tanh(sin(time + phase) * 2.6)
+        return (0.47 + shift + shaped * 0.38).coerceIn(0.05, 0.95)
     }
 
     private fun startPolling() {
