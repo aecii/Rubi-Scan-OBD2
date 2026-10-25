@@ -1,0 +1,82 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Rubi-Scan OBDII</title>
+  <style>
+    :root { color-scheme: dark; }
+    body {
+      margin: 0;
+      font-family: system-ui, sans-serif;
+      background: #121212;
+      color: #f5f5f5;
+    }
+    main {
+      max-width: 640px;
+      margin: 0 auto;
+      padding: 40px 20px 64px;
+    }
+    h1 {
+      margin: 0 0 8px;
+      color: #ffea00;
+    }
+    .lead { margin-top: 0; line-height: 1.5; }
+    a.button {
+      display: inline-block;
+      margin-top: 8px;
+      background: #ffea00;
+      color: #121212;
+      text-decoration: none;
+      font-weight: 700;
+      padding: 14px 22px;
+      border-radius: 8px;
+    }
+    .url { word-break: break-all; color: #ffea00; }
+    .card {
+      background: #1e1e1e;
+      border-radius: 12px;
+      padding: 20px;
+      margin-top: 28px;
+    }
+    .card p { margin: 8px 0; }
+    .footer {
+      margin-top: 36px;
+    }
+    .footer a {
+      color: #ffea00;
+    }
+  </style>
+</head>
+<body>
+  <main>
+    <h1>Rubi-Scan OBDII</h1>
+    <p class="lead">Android scanner for a paired OBDLink adapter. Live gauges, trouble codes, and a track timer.</p>
+    <p><a class="button" id="download" href="RubiScan-OBDII.apk">Download APK</a></p>
+    <p>Direct link:<br><a class="url" id="download-url" href="RubiScan-OBDII.apk">https://aecii.kindfox.org/OBDII/RubiScan-OBDII.apk</a></p>
+    <section class="card">
+      <p id="version">Loading version…</p>
+      <p id="notes"></p>
+    </section>
+    <p class="footer"><a href="https://aecii.kindfox.org/fsm_mustang/">Ford Mustang S197 FSM</a></p>
+  </main>
+  <script>
+    fetch("version.json")
+      .then(function (response) { return response.json(); })
+      .then(function (info) {
+        document.getElementById("version").textContent =
+          "Version " + info.versionName + " (code " + info.versionCode + ")";
+        document.getElementById("notes").textContent = info.releaseNotes || "";
+        if (info.downloadUrl) {
+          document.getElementById("download").href = info.downloadUrl;
+          document.getElementById("download-url").href = info.downloadUrl;
+          document.getElementById("download-url").textContent = info.downloadUrl;
+        }
+      })
+      .catch(function () {
+        document.getElementById("version").textContent =
+          "Version details could not be loaded. The APK link above still works.";
+      });
+  </script>
+</body>
+</html>

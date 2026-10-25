@@ -161,22 +161,29 @@ object PdfReportGenerator {
         }
 
         // --- Freeze Frame Snapshot Section ---
-        if (freezeFrame != null && y < 730f) {
+        if (freezeFrame != null && y < 680f) {
             y += 10f
             textPaint.color = Color.BLACK
             textPaint.textSize = 12f
             textPaint.typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
-            canvas.drawText("Freeze Frame Data Snapshot (DTC: ${freezeFrame.dtcCode})", margin, y, textPaint)
+            canvas.drawText("Freeze Frame Snapshot (conditions when ${freezeFrame.dtcCode} was stored)", margin, y, textPaint)
 
             y += 15f
+            val lines = listOf(
+                "RPM: ${freezeFrame.rpm?.toInt() ?: "—"}    Speed: ${freezeFrame.speedKmh?.toInt() ?: "—"} km/h    Coolant: ${freezeFrame.coolantCelsius?.toInt() ?: "—"} °C",
+                "Load: ${freezeFrame.loadPercent?.let { "%.0f%%".format(it) } ?: "—"}    Trim: ${freezeFrame.fuelTrimB1?.let { "%+.1f%%".format(it) } ?: "—"}    Throttle: ${freezeFrame.throttlePercent?.let { "%.0f%%".format(it) } ?: "—"}",
+                "Intake: ${freezeFrame.intakeAirCelsius?.toInt() ?: "—"} °C    MAP: ${freezeFrame.mapKpa?.toInt() ?: "—"} kPa    Fuel: ${freezeFrame.fuelLoopStatus?.title ?: "—"}"
+            )
+            val blockHeight = 12f + (lines.size * 14f)
             paint.color = Color.rgb(245, 245, 245)
-            canvas.drawRect(margin, y, margin + contentWidth, y + 35f, paint)
+            canvas.drawRect(margin, y, margin + contentWidth, y + blockHeight, paint)
 
             textPaint.textSize = 9f
             textPaint.typeface = Typeface.create(Typeface.DEFAULT, Typeface.NORMAL)
-            val ffStr = "RPM: ${freezeFrame.rpm?.toInt() ?: "—"} | Speed: ${freezeFrame.speedKmh?.toInt() ?: "—"} km/h | Coolant: ${freezeFrame.coolantCelsius?.toInt() ?: "—"} °C | Load: ${freezeFrame.loadPercent?.toInt() ?: "—"} %"
-            canvas.drawText(ffStr, margin + 10f, y + 22f, textPaint)
-            y += 45f
+            lines.forEachIndexed { index, line ->
+                canvas.drawText(line, margin + 10f, y + 14f + (index * 14f), textPaint)
+            }
+            y += blockHeight + 12f
         }
 
         // Footer

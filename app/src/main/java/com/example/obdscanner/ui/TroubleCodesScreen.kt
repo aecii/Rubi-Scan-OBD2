@@ -40,6 +40,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -50,11 +51,14 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.core.content.FileProvider
 import com.example.obdscanner.model.DrivingCriticality
 import com.example.obdscanner.model.DtcCategory
 import com.example.obdscanner.model.DtcCode
+import com.example.obdscanner.model.FreezeFrameData
+import com.example.obdscanner.model.UnitSystem
 import com.example.obdscanner.obd.VehicleProfile
 import java.io.File
 
@@ -62,6 +66,10 @@ import java.io.File
 fun TroubleCodesScreen(
     codes: List<DtcCode>,
     vehicleProfile: VehicleProfile?,
+    plateNumber: String = "",
+    phoneNumber: String = "",
+    freezeFrame: FreezeFrameData?,
+    unitSystem: UnitSystem,
     isConnected: Boolean,
     isReading: Boolean,
     onReadCodes: () -> Unit,
@@ -141,7 +149,7 @@ fun TroubleCodesScreen(
                     Spacer(Modifier.width(10.dp))
                     Column {
                         Text(
-                            text = "Scanned Vehicle:",
+                            text = "Vehicle",
                             style = MaterialTheme.typography.labelSmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
@@ -150,87 +158,175 @@ fun TroubleCodesScreen(
                             style = MaterialTheme.typography.titleMedium,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
+                        if (plateNumber.isNotBlank()) {
+                            Text(
+                                text = "Plate $plateNumber",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                        if (phoneNumber.isNotBlank()) {
+                            Text(
+                                text = phoneNumber,
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
                     }
                 }
             }
         }
+
+        Text("Trouble Codes (DTCs)", style = MaterialTheme.typography.titleLarge)
 
         Row(
             modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
         ) {
-            Text("Trouble Codes (DTCs)", style = MaterialTheme.typography.titleLarge)
-
-            Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                Button(
-                    onClick = onReadCodes,
-                    enabled = isConnected && !isReading
-                ) {
-                    if (isReading) {
-                        CircularProgressIndicator(
-                            modifier = Modifier.width(16.dp).height(16.dp),
-                            color = MaterialTheme.colorScheme.onPrimary,
-                            strokeWidth = 2.dp
-                        )
-                    } else {
-                        Icon(Icons.Default.Refresh, contentDescription = null)
-                        Spacer(Modifier.width(4.dp))
-                        Text("Read")
-                    }
-                }
-
-                OutlinedButton(
-                    onClick = {
-                        val pdfFile = onExportPdfReport(context)
-                        if (pdfFile != null && pdfFile.exists()) {
-                            sharePdfReport(context, pdfFile)
-                        }
-                    }
-                ) {
-                    Icon(Icons.Default.PictureAsPdf, contentDescription = null)
+            Button(
+                onClick = onReadCodes,
+                enabled = isConnected && !isReading,
+                modifier = Modifier.weight(1f)
+            ) {
+                if (isReading) {
+                    CircularProgressIndicator(
+                        modifier = Modifier.width(16.dp).height(16.dp),
+                        color = MaterialTheme.colorScheme.onPrimary,
+                        strokeWidth = 2.dp
+                    )
+                } else {
+                    Icon(Icons.Default.Refresh, contentDescription = null)
                     Spacer(Modifier.width(4.dp))
-                    Text("Report")
+                    Text("Read", maxLines = 1, overflow = TextOverflow.Ellipsis)
                 }
+            }
 
-                OutlinedButton(
-                    onClick = { showClearConfirmation = true },
-                    enabled = isConnected && !isReading,
-                    colors = ButtonDefaults.outlinedButtonColors(contentColor = MaterialTheme.colorScheme.error)
-                ) {
-                    Icon(Icons.Default.Delete, contentDescription = null)
-                    Spacer(Modifier.width(4.dp))
-                    Text("Clear")
-                }
+            OutlinedButton(
+                onClick = {
+                    val pdfFile = onExportPdfReport(context)
+                    if (pdfFile != null && pdfFile.exists()) {
+                        sharePdfReport(context, pdfFile)
+                    }
+                },
+                modifier = Modifier.weight(1f)
+            ) {
+                Icon(Icons.Default.PictureAsPdf, contentDescription = null)
+                Spacer(Modifier.width(4.dp))
+                Text("Report", maxLines = 1, overflow = TextOverflow.Ellipsis)
+            }
+
+            OutlinedButton(
+                onClick = { showClearConfirmation = true },
+                enabled = isConnected && !isReading,
+                modifier = Modifier.weight(1f),
+                colors = ButtonDefaults.outlinedButtonColors(contentColor = MaterialTheme.colorScheme.error)
+            ) {
+                Icon(Icons.Default.Delete, contentDescription = null)
+                Spacer(Modifier.width(4.dp))
+                Text("Clear", maxLines = 1, overflow = TextOverflow.Ellipsis)
             }
         }
 
-        if (codes.isEmpty()) {
-            Card(modifier = Modifier.fillMaxWidth().padding(top = 16.dp)) {
-                Column(
-                    modifier = Modifier.padding(24.dp).fillMaxWidth(),
-                    horizontalAlignment = Alignment.CenterHorizontally,
-                    verticalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    Text("No Diagnostic Trouble Codes Loaded", style = MaterialTheme.typography.titleMedium)
-                    Text(
-                        if (!isConnected) "Connect to an OBDLink adapter to read vehicle trouble codes."
-                        else "Tap 'Read' to scan Mode 03 (Stored), Mode 07 (Pending), and Mode 0A (Permanent) codes.",
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
+        LazyColumn(
+            modifier = Modifier
+                .fillMaxWidth()
+                .weight(1f),
+            verticalArrangement = Arrangement.spacedBy(10.dp)
+        ) {
+            val snapshot = freezeFrame
+            if (snapshot != null) {
+                item(key = "freeze-frame") {
+                    FreezeFrameCard(freezeFrame = snapshot, unitSystem = unitSystem)
                 }
             }
-        } else {
-            LazyColumn(
-                modifier = Modifier.fillMaxSize(),
-                verticalArrangement = Arrangement.spacedBy(10.dp)
-            ) {
-                items(codes) { code ->
+            if (codes.isEmpty()) {
+                item(key = "empty") {
+                    Card(modifier = Modifier.fillMaxWidth()) {
+                        Column(
+                            modifier = Modifier.padding(24.dp).fillMaxWidth(),
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                            verticalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            Text("No Diagnostic Trouble Codes Loaded", style = MaterialTheme.typography.titleMedium)
+                            Text(
+                                if (!isConnected) "Connect to an OBDLink adapter to read vehicle trouble codes."
+                                else "Tap 'Read' to scan Mode 03 (Stored), Mode 07 (Pending), and Mode 0A (Permanent) codes.",
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                    }
+                }
+            } else {
+                items(codes, key = { "${it.code}_${it.category}" }) { code ->
                     DtcCodeCard(dtc = code)
                 }
             }
         }
+    }
+}
+
+@Composable
+private fun FreezeFrameCard(freezeFrame: FreezeFrameData, unitSystem: UnitSystem) {
+    val imperial = unitSystem == UnitSystem.IMPERIAL
+    fun temp(celsius: Double?) = when {
+        celsius == null -> "—"
+        imperial -> "%.0f °F".format((celsius * 9.0 / 5.0) + 32.0)
+        else -> "%.0f °C".format(celsius)
+    }
+    fun speed(kmh: Double?) = when {
+        kmh == null -> "—"
+        imperial -> "%.0f mph".format(kmh * 0.621371)
+        else -> "%.0f km/h".format(kmh)
+    }
+    fun pressure(kpa: Double?) = when {
+        kpa == null -> "—"
+        imperial -> "%.1f psi".format(kpa * 0.145038)
+        else -> "%.0f kPa".format(kpa)
+    }
+
+    Card(modifier = Modifier.fillMaxWidth()) {
+        Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+            Text("Freeze Frame", style = MaterialTheme.typography.titleMedium)
+            Text(
+                "Snapshot saved by the engine computer when fault ${freezeFrame.dtcCode} was detected. These readings are from that moment, even if the engine is running normally now.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+            HorizontalDivider(modifier = Modifier.padding(vertical = 4.dp))
+            FreezeFrameRow("Fault", freezeFrame.dtcCode)
+            FreezeFrameRow("Engine speed", freezeFrame.rpm?.let { "%.0f rpm".format(it) } ?: "—")
+            FreezeFrameRow("Vehicle speed", speed(freezeFrame.speedKmh))
+            FreezeFrameRow("Coolant", temp(freezeFrame.coolantCelsius))
+            FreezeFrameRow("Engine load", freezeFrame.loadPercent?.let { "%.1f%%".format(it) } ?: "—")
+            FreezeFrameRow("Short fuel trim", freezeFrame.fuelTrimB1?.let { "%+.1f%%".format(it) } ?: "—")
+            FreezeFrameRow("Throttle", freezeFrame.throttlePercent?.let { "%.1f%%".format(it) } ?: "—")
+            FreezeFrameRow("Intake air", temp(freezeFrame.intakeAirCelsius))
+            FreezeFrameRow("Manifold pressure", pressure(freezeFrame.mapKpa))
+            FreezeFrameRow("Fuel system", freezeFrame.fuelLoopStatus?.title ?: "—")
+        }
+    }
+}
+
+@Composable
+private fun FreezeFrameRow(label: String, value: String) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Text(
+            label,
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.weight(1f)
+        )
+        Text(
+            value,
+            style = MaterialTheme.typography.titleSmall,
+            textAlign = TextAlign.End,
+            modifier = Modifier.weight(1.15f)
+        )
     }
 }
 

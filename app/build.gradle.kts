@@ -1,7 +1,11 @@
 plugins {
-    id("com.android.application") version "8.13.2" apply true
-    id("org.jetbrains.kotlin.android") version "2.0.21" apply true
-    id("org.jetbrains.kotlin.plugin.compose") version "2.0.21" apply true
+    id("com.android.application")
+    id("org.jetbrains.kotlin.android")
+    id("org.jetbrains.kotlin.plugin.compose")
+}
+
+base {
+    archivesName.set("ObdLinkScanner")
 }
 
 android {
@@ -44,4 +48,50 @@ dependencies {
     implementation("androidx.camera:camera-view:1.4.1")
 
     debugImplementation("androidx.compose.ui:ui-tooling")
+}
+
+tasks.register("publishDebugUpdate") {
+    group = "distribution"
+    description = "Upload the debug APK and version.json to the OBDII update server."
+    doLast {
+        val apk = layout.buildDirectory.file("outputs/apk/debug/ObdLinkScanner-debug.apk").get().asFile
+        val versionFile = file("version.json")
+        if (!apk.isFile) {
+            throw GradleException("Debug APK was not built: ${apk.absolutePath}")
+        }
+        val existingNotes = if (versionFile.isFile) {
+            @Suppress("UNCHECKED_CAST")
+            val parsed = groovy.json.JsonSlurper().parse(versionFile) as Map<String, Any?>
+            parsed["releaseNotes"]?.toString().orEmpty()
+        } else {
+            ""
+        }
+        val payload = mapOf(
+            "versionCode" to (android.defaultConfig.versionCode ?: 1),
+            "versionName" to (android.defaultConfig.versionName ?: "0"),
+            "downloadUrl" to "https://aecii.kindfox.org/OBDII/RubiScan-OBDII.apk",
+            "releaseNotes" to existingNotes
+        )
+        versionFile.writeText(groovy.json.JsonOutput.prettyPrint(groovy.json.JsonOutput.toJson(payload)) + "\n")
+        val remoteDir = "aecii@aecii.kindfox.org:/var/www/html/OBDII"
+        fun upload(source: java.io.File, remoteName: String) {
+            exec {
+                commandLine(
+                    "scp",
+                    "-o", "BatchMode=yes",
+                    "-o", "StrictHostKeyChecking=accept-new",
+                    source.absolutePath,
+                    "$remoteDir/$remoteName"
+                )
+            }
+        }
+        upload(apk, "RubiScan-OBDII.apk")
+        upload(versionFile, "version.json")
+    }
+}
+
+afterEvaluate {
+    tasks.named("assembleDebug") {
+        finalizedBy("publishDebugUpdate")
+    }
 }

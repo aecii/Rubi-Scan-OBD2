@@ -42,6 +42,41 @@ object ObdProtocolHandler {
         }
     }
 
+    fun decodeFreezeFrameDtc(payload: String?): String? {
+        if (payload == null || payload.length < 4) return null
+        val pair = payload.take(4)
+        if (pair == "0000") return null
+        val b1 = pair.substring(0, 2).toIntOrNull(16) ?: return null
+        val b2 = pair.substring(2, 4).toIntOrNull(16) ?: return null
+        val systemChar = when ((b1 shr 6) and 0x03) {
+            0 -> "P"
+            1 -> "C"
+            2 -> "B"
+            else -> "U"
+        }
+        val secondDigit = ((b1 shr 4) and 0x03).toString()
+        return "%s%s%X%02X".format(systemChar, secondDigit, b1 and 0x0F, b2)
+    }
+
+    /**
+     * Mode 01/02 support bitfield. Bit 7 of the first byte is [firstPid].
+     * For PID 00, firstPid is 0x01. For PID 20, firstPid is 0x21.
+     * Returns null when the ECU did not report a support mask.
+     */
+    fun decodeSupportedPids(payload: String?, firstPid: Int = 1): Set<Int>? {
+        if (payload == null || payload.length < 8) return null
+        val bytes = (0 until 4).map { index ->
+            payload.substring(index * 2, index * 2 + 2).toIntOrNull(16) ?: return null
+        }
+        val supported = mutableSetOf<Int>()
+        for (offset in 0 until 32) {
+            val byte = bytes[offset / 8]
+            val bit = 7 - (offset % 8)
+            if (((byte shr bit) and 1) == 1) supported.add(firstPid + offset)
+        }
+        return supported
+    }
+
     // --- Mode 01 PID Decoders ---
 
     fun decodeRpm(payload: String?): Double? {
@@ -204,28 +239,33 @@ object ObdProtocolHandler {
     }
 
     private fun extractMode09Payload(rawResponse: String, pidHex: String): String {
-        val lines = rawResponse.split("\r", "\n")
-            .map { normalizeHexResponse(it) }
+        val responseHeader = "49" + pidHex.uppercase()
+        val sb = StringBuilder()
+        val lines = rawResponse.replace(">", " ")
+            .split('\r', '\n')
+            .map { it.trim() }
             .filter { it.isNotBlank() }
 
-        val responseHeader = "49" + pidHex.uppercase()
-        val sb = java.lang.StringBuilder()
-
-        for (line in lines) {
-            if (line.contains("NO DATA") || line.contains("ERROR")) continue
-            val dataPart = if (line.contains(responseHeader)) {
-                line.substringAfter(responseHeader)
-            } else if (line.length >= 4 && line.substring(0, 2).matches(Regex("[0-9][0-9A-F]"))) {
-                // CAN frame sequence line, e.g., 01: 49 02 01 02 ... or line sequence numbers
-                line.drop(2)
-            } else {
-                line
+        for (rawLine in lines) {
+            if (rawLine.contains("NO DATA", true) ||
+                rawLine.contains("ERROR", true) ||
+                rawLine.contains("SEARCHING", true) ||
+                rawLine.contains("UNABLE", true)
+            ) {
+                continue
             }
-            // Drop initial frame count byte if present
-            val cleanedData = if (dataPart.length > 2 && dataPart.startsWith("01")) dataPart.drop(2) else dataPart
-            sb.append(cleanedData)
+            // Drop only a real ELM line index such as "1:" before the hex is stripped.
+            var line = rawLine.replace(Regex("^[0-9A-F]:\\s*"), "")
+            line = line.replace(Regex("^[0-9A-F]{3}\\s+"), "")
+            val hex = line.uppercase().replace(Regex("[^0-9A-F]"), "")
+            if (hex.isEmpty()) continue
+            val dataPart = if (hex.contains(responseHeader)) hex.substringAfter(responseHeader) else hex
+            sb.append(dataPart)
         }
-        return sb.toString()
+
+        var payload = sb.toString()
+        if (payload.startsWith("01")) payload = payload.drop(2)
+        return payload
     }
 
     private fun hexToAscii(hex: String): String {

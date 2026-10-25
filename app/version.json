@@ -1,6 +1,6 @@
 {
-  "versionCode": 3,
-  "versionName": "0.3.0",
-  "downloadUrl": "https://aecii.kindfox.org/OBDII/RubiScan-OBDII.apk",
-  "releaseNotes": "Added auto-update support, live sensor CSV logging, 0-60 mph timer, and video HUD overlay."
+    "versionCode": 2,
+    "versionName": "0.2.0",
+    "downloadUrl": "https://aecii.kindfox.org/OBDII/RubiScan-OBDII.apk",
+    "releaseNotes": "Added auto-update support, live sensor CSV logging, 0-60 mph timer, and video HUD overlay."
 }

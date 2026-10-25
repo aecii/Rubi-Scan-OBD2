@@ -14,15 +14,24 @@ import com.example.obdscanner.model.LiveMetrics
 import com.example.obdscanner.model.O2DisplayMode
 import com.example.obdscanner.model.O2Sample
 import com.example.obdscanner.model.ObdAdapterInfo
+import com.example.obdscanner.model.SavedVehicle
+import com.example.obdscanner.model.SensorKind
+import com.example.obdscanner.model.SensorReading
 import com.example.obdscanner.model.UnitSystem
 import com.example.obdscanner.model.VehicleInfo
-import com.example.obdscanner.obd.AppUpdateInfo
-import com.example.obdscanner.obd.AutoUpdateManager
+import com.example.obdscanner.model.VehicleSaveOffer
+import com.example.obdscanner.obd.AvailableUpdate
 import com.example.obdscanner.obd.DtcDatabase
+import com.example.obdscanner.obd.ObdPidCatalog
+import com.example.obdscanner.obd.VersionCheck
 import com.example.obdscanner.obd.ObdBluetoothManager
 import com.example.obdscanner.obd.ObdProtocolHandler
 import com.example.obdscanner.obd.PdfReportGenerator
 import com.example.obdscanner.obd.VehicleProfile
+import com.example.obdscanner.obd.VehicleProfileStore
+import com.example.obdscanner.obd.VinDecoder
+import com.example.obdscanner.obd.toVehicleInfo
+import java.util.UUID
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -58,8 +67,34 @@ class ObdScannerViewModel : ViewModel() {
     private val _freezeFrameData = MutableStateFlow<FreezeFrameData?>(null)
     val freezeFrameData: StateFlow<FreezeFrameData?> = _freezeFrameData.asStateFlow()
 
+    private val _sensorReadings = MutableStateFlow<List<SensorReading>>(emptyList())
+    val sensorReadings: StateFlow<List<SensorReading>> = _sensorReadings.asStateFlow()
+    private val sensorLock = Any()
+    private val supportedDataPids = mutableListOf<Int>()
+    private val sensorByPid = linkedMapOf<Int, SensorReading>()
+    private var sensorCursor = 0
+
+    @Volatile
+    private var sensorsPageVisible = false
+
+    private val metricsPids = setOf(
+        0x01, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x09,
+        0x0B, 0x0C, 0x0D, 0x0F, 0x10, 0x11
+    )
+
     private val _vehicleInfo = MutableStateFlow(VehicleInfo())
     val vehicleInfo: StateFlow<VehicleInfo> = _vehicleInfo.asStateFlow()
+
+    private val _savedVehicles = MutableStateFlow<List<SavedVehicle>>(emptyList())
+    val savedVehicles: StateFlow<List<SavedVehicle>> = _savedVehicles.asStateFlow()
+
+    private val _activeVehicleId = MutableStateFlow<String?>(null)
+    val activeVehicleId: StateFlow<String?> = _activeVehicleId.asStateFlow()
+
+    private val _vehicleSaveOffer = MutableStateFlow<VehicleSaveOffer?>(null)
+    val vehicleSaveOffer: StateFlow<VehicleSaveOffer?> = _vehicleSaveOffer.asStateFlow()
+
+    private var appContext: Context? = null
 
     private val _adapterInfo = MutableStateFlow(ObdAdapterInfo())
     val adapterInfo: StateFlow<ObdAdapterInfo> = _adapterInfo.asStateFlow()
@@ -83,9 +118,8 @@ class ObdScannerViewModel : ViewModel() {
     private val _isDemoMode = MutableStateFlow(false)
     val isDemoMode: StateFlow<Boolean> = _isDemoMode.asStateFlow()
 
-    // Auto-Update Manifest State
-    private val _appUpdateInfo = MutableStateFlow<AppUpdateInfo?>(null)
-    val appUpdateInfo: StateFlow<AppUpdateInfo?> = _appUpdateInfo.asStateFlow()
+    private val _availableUpdate = MutableStateFlow<AvailableUpdate?>(null)
+    val availableUpdate: StateFlow<AvailableUpdate?> = _availableUpdate.asStateFlow()
 
     // CSV Telemetry Recorder
     private val _isLoggingCsv = MutableStateFlow(false)
@@ -95,10 +129,31 @@ class ObdScannerViewModel : ViewModel() {
     private val _csvSampleCount = MutableStateFlow(0)
     val csvSampleCount: StateFlow<Int> = _csvSampleCount.asStateFlow()
 
+    fun checkForUpdateOnLaunch(context: Context) {
+        val application = context.applicationContext
+        appContext = application
+        val stored = VehicleProfileStore.load(application)
+        _savedVehicles.value = stored.vehicles
+        _activeVehicleId.value = stored.activeId
+        restoreActiveSavedVehicle()
+        viewModelScope.launch {
+            _availableUpdate.value = VersionCheck.findUpdate(application)
+        }
+    }
+
+    fun dismissUpdateNotice() {
+        _availableUpdate.value = null
+    }
+
+    fun setSensorsPageVisible(visible: Boolean) {
+        sensorsPageVisible = visible
+    }
+
     fun connect(device: BluetoothDevice) {
         if (_isDemoMode.value) {
             _isDemoMode.value = false
         }
+        clearSensorCache()
         if (_connectionState.value is ConnectionState.Connecting || _connectionState.value is ConnectionState.Initializing) return
 
         _connectionState.value = ConnectionState.Connecting(device.name ?: "OBDLink Adapter")
@@ -115,11 +170,12 @@ class ObdScannerViewModel : ViewModel() {
                 _connectionState.value = ConnectionState.Connected(adapterInfoResult.name)
                 _statusMessage.value = "Connected to ${adapterInfoResult.name}. Protocol: ${adapterInfoResult.protocol}."
 
+                readVehicleIdentityInternal()
+
                 // Read initial trouble codes on connect
                 readTroubleCodesInternal()
 
-                // Check for app update in background
-                checkForAppUpdates()
+                discoverSupportedPids()
 
                 // Start live data polling loop
                 startPolling()
@@ -138,11 +194,11 @@ class ObdScannerViewModel : ViewModel() {
             disconnect()
         } else {
             _isDemoMode.value = true
-            enableDemoModeInternal()
+            enableDemoModeInternal(offerSave = true)
         }
     }
 
-    private fun enableDemoModeInternal() {
+    private fun enableDemoModeInternal(offerSave: Boolean = false) {
         pollJob?.cancel()
         pollJob = null
 
@@ -208,19 +264,17 @@ class ObdScannerViewModel : ViewModel() {
             speedKmh = 72.4,
             coolantCelsius = 90.0,
             loadPercent = 38.5,
-            fuelTrimB1 = 3.2
+            fuelTrimB1 = 3.2,
+            throttlePercent = 22.0,
+            intakeAirCelsius = 28.0,
+            mapKpa = 42.0,
+            fuelLoopStatus = FuelLoopStatus.CLOSED_LOOP_NORMAL
         )
-    }
-
-    fun checkForAppUpdates(currentVersionCode: Int = 2) {
-        viewModelScope.launch(Dispatchers.IO) {
-            val updateInfo = AutoUpdateManager.checkForUpdates(currentVersionCode)
-            _appUpdateInfo.value = updateInfo
+        _sensorReadings.value = ObdPidCatalog.demoReadings()
+        val alreadySaved = offerSaveIfNew(jeepProfile, "CALID_JEEP_36L_2015", "CVN98765")
+        if (!offerSave && !alreadySaved) {
+            _vehicleSaveOffer.value = null
         }
-    }
-
-    fun downloadAndInstallUpdate(context: Context, downloadUrl: String) {
-        AutoUpdateManager.downloadAndInstallUpdate(context, downloadUrl)
     }
 
     fun disconnect() {
@@ -234,6 +288,8 @@ class ObdScannerViewModel : ViewModel() {
         _troubleCodes.value = emptyList()
         _freezeFrameData.value = null
         _adapterInfo.value = ObdAdapterInfo()
+        clearSensorCache()
+        restoreActiveSavedVehicle()
         _statusMessage.value = "Disconnected."
     }
 
@@ -302,6 +358,7 @@ class ObdScannerViewModel : ViewModel() {
     fun clearTroubleCodes(onComplete: (Boolean, String) -> Unit) {
         if (_isDemoMode.value) {
             _troubleCodes.value = emptyList()
+            _freezeFrameData.value = null
             _statusMessage.value = "Demo Mode: Trouble codes cleared."
             onComplete(true, "Demo Mode: Fault codes reset successfully.")
             return
@@ -354,8 +411,10 @@ class ObdScannerViewModel : ViewModel() {
             _troubleCodes.value = distinctCodes
 
             if (distinctCodes.isNotEmpty()) {
-                // Read Mode 02 Freeze Frame
+                _statusMessage.value = "Reading freeze frame saved with ${distinctCodes.first().code}…"
                 readFreezeFrameInternal(distinctCodes.first().code)
+            } else {
+                _freezeFrameData.value = null
             }
 
             _statusMessage.value = if (distinctCodes.isEmpty()) {
@@ -372,25 +431,375 @@ class ObdScannerViewModel : ViewModel() {
 
     private suspend fun readFreezeFrameInternal(primaryDtc: String) {
         try {
-            val ffDtcRaw = try { bluetoothManager.sendCommand("020200", timeoutMs = 2500) } catch (_: Exception) { "" }
-            val ffRpmRaw = try { bluetoothManager.sendCommand("020C00", timeoutMs = 2500) } catch (_: Exception) { "" }
-            val ffSpeedRaw = try { bluetoothManager.sendCommand("020D00", timeoutMs = 2500) } catch (_: Exception) { "" }
-            val ffCoolantRaw = try { bluetoothManager.sendCommand("020500", timeoutMs = 2500) } catch (_: Exception) { "" }
-            val ffLoadRaw = try { bluetoothManager.sendCommand("020400", timeoutMs = 2500) } catch (_: Exception) { "" }
+            suspend fun readPid(command: String) = try {
+                bluetoothManager.sendCommand(command, timeoutMs = 2500)
+            } catch (_: Exception) {
+                ""
+            }
 
-            val rpm = ffRpmRaw.let { ObdProtocolHandler.decodeRpm(ObdProtocolHandler.extractPidPayload(it, "020C")) }
-            val speed = ffSpeedRaw.let { ObdProtocolHandler.decodeSpeed(ObdProtocolHandler.extractPidPayload(it, "020D")) }
-            val coolant = ffCoolantRaw.let { ObdProtocolHandler.decodeCoolant(ObdProtocolHandler.extractPidPayload(it, "0205")) }
-            val load = ffLoadRaw.let { ObdProtocolHandler.decodeLoad(ObdProtocolHandler.extractPidPayload(it, "0204")) }
+            val supportPayload = ObdProtocolHandler.extractPidPayload(readPid("020000"), "0200")
+            val supported = ObdProtocolHandler.decodeSupportedPids(supportPayload)
 
-            _freezeFrameData.value = FreezeFrameData(
-                dtcCode = primaryDtc,
-                rpm = rpm,
-                speedKmh = speed,
-                coolantCelsius = coolant,
-                loadPercent = load
+            suspend fun payloadFor(pid: Int, command: String): String? {
+                if (supported != null && pid !in supported) return null
+                return ObdProtocolHandler.extractPidPayload(readPid(command), command.take(4))
+            }
+
+            val dtcPayload = payloadFor(0x02, "020200")
+            val rpm = ObdProtocolHandler.decodeRpm(payloadFor(0x0C, "020C00"))
+            val speed = ObdProtocolHandler.decodeSpeed(payloadFor(0x0D, "020D00"))
+            val coolant = ObdProtocolHandler.decodeCoolant(payloadFor(0x05, "020500"))
+            val load = ObdProtocolHandler.decodeLoad(payloadFor(0x04, "020400"))
+            val fuelTrim = ObdProtocolHandler.decodeFuelTrim(payloadFor(0x06, "020600"))
+            val throttle = ObdProtocolHandler.decodeThrottle(payloadFor(0x11, "021100"))
+            val intake = ObdProtocolHandler.decodeIat(payloadFor(0x0F, "020F00"))
+            val map = ObdProtocolHandler.decodeMap(payloadFor(0x0B, "020B00"))
+            val fuelLoop = ObdProtocolHandler.decodeFuelLoopStatus(payloadFor(0x03, "020300"))
+            val dtc = ObdProtocolHandler.decodeFreezeFrameDtc(dtcPayload) ?: primaryDtc
+            val hasSnapshot = listOf(rpm, speed, coolant, load, fuelTrim, throttle, intake, map).any { it != null } ||
+                fuelLoop != null
+
+            _freezeFrameData.value = if (hasSnapshot) {
+                FreezeFrameData(
+                    dtcCode = dtc,
+                    rpm = rpm,
+                    speedKmh = speed,
+                    coolantCelsius = coolant,
+                    loadPercent = load,
+                    fuelTrimB1 = fuelTrim,
+                    throttlePercent = throttle,
+                    intakeAirCelsius = intake,
+                    mapKpa = map,
+                    fuelLoopStatus = fuelLoop
+                )
+            } else {
+                null
+            }
+        } catch (_: Exception) {
+            _freezeFrameData.value = null
+        }
+    }
+
+    fun dismissVehicleOffer() {
+        _vehicleSaveOffer.value = null
+    }
+
+    fun saveOfferedVehicle(plateNumber: String, phoneNumber: String) {
+        val offer = _vehicleSaveOffer.value ?: return
+        val vehicle = SavedVehicle(
+            id = UUID.randomUUID().toString(),
+            vin = offer.profile.vin,
+            year = offer.profile.year,
+            make = offer.profile.make,
+            model = offer.profile.model,
+            engine = offer.profile.engine,
+            displayName = offer.profile.displayName,
+            plateNumber = plateNumber.trim().uppercase(),
+            phoneNumber = phoneNumber.trim(),
+            calibrationId = offer.calibrationId
+        )
+        upsertVehicle(vehicle, matchVin = true)
+        _vehicleSaveOffer.value = null
+        _statusMessage.value = "Saved ${vehicle.displayName}."
+    }
+
+    fun selectVehicle(id: String) {
+        val selected = _savedVehicles.value.firstOrNull { it.id == id } ?: return
+        _activeVehicleId.value = id
+        val connectedVin = _vehicleInfo.value.vin
+        val liveConnection = _connectionState.value is ConnectionState.Connected && !_isDemoMode.value
+        val sameVehicle = connectedVin.equals(selected.vin, ignoreCase = true) || connectedVin == "Not Read"
+        if (!liveConnection || sameVehicle) {
+            _vehicleInfo.value = selected.toVehicleInfo(cvn = _vehicleInfo.value.cvn)
+        }
+        persistVehicles()
+        _statusMessage.value = "Vehicle profile: ${selected.displayName}."
+    }
+
+    fun deleteVehicle(id: String) {
+        _savedVehicles.value = _savedVehicles.value.filterNot { it.id == id }
+        if (_activeVehicleId.value == id) {
+            _activeVehicleId.value = _savedVehicles.value.firstOrNull()?.id
+        }
+        if (_vehicleInfo.value.savedId == id) {
+            restoreActiveSavedVehicle()
+        }
+        persistVehicles()
+    }
+
+    fun saveVehicleForm(id: String?, displayName: String, vin: String, plateNumber: String, phoneNumber: String) {
+        val cleanVin = vin.trim().uppercase().filter { it.isLetterOrDigit() }
+        val decoded = if (cleanVin.length >= 11) VinDecoder.decode(cleanVin) else null
+        val plate = plateNumber.trim().uppercase()
+        val phone = phoneNumber.trim()
+        val name = displayName.trim().ifBlank {
+            decoded?.displayName?.takeUnless { it == "Generic OBD2 Vehicle" } ?: plate
+        }
+        if (name.isBlank()) return
+        val existing = id?.let { savedId -> _savedVehicles.value.firstOrNull { it.id == savedId } }
+        val vehicle = SavedVehicle(
+            id = existing?.id ?: UUID.randomUUID().toString(),
+            vin = decoded?.vin?.takeIf { it.length == 17 } ?: cleanVin,
+            year = decoded?.year ?: existing?.year.orEmpty(),
+            make = decoded?.make ?: existing?.make.orEmpty(),
+            model = decoded?.model ?: existing?.model.orEmpty(),
+            engine = decoded?.engine ?: existing?.engine.orEmpty(),
+            displayName = name,
+            plateNumber = plate,
+            phoneNumber = phone,
+            calibrationId = existing?.calibrationId.orEmpty()
+        )
+        upsertVehicle(vehicle, matchVin = existing == null)
+        _statusMessage.value = "Saved ${vehicle.displayName}."
+    }
+
+    private suspend fun readVehicleIdentityInternal() {
+        _isReadingVehicleInfo.value = true
+        _statusMessage.value = "Reading vehicle identification…"
+        try {
+            val vinRaw = try {
+                bluetoothManager.sendCommand("0902", timeoutMs = 5000)
+            } catch (_: Exception) {
+                ""
+            }
+            val vin = ObdProtocolHandler.decodeVin(vinRaw)
+            val calRaw = try {
+                bluetoothManager.sendCommand("0904", timeoutMs = 4000)
+            } catch (_: Exception) {
+                ""
+            }
+            val calibrationId = ObdProtocolHandler.decodeCalibrationId(calRaw)
+            val cvnRaw = try {
+                bluetoothManager.sendCommand("0906", timeoutMs = 3000)
+            } catch (_: Exception) {
+                ""
+            }
+            val cvn = ObdProtocolHandler.decodeCvn(cvnRaw)
+            if (vin.length != 17 || vin == "Unavailable") {
+                _statusMessage.value = "The engine computer did not return a VIN. Add the vehicle in Settings if you want a profile."
+                return
+            }
+            val decoded = VinDecoder.decode(vin)
+            val storedCal = calibrationId.takeUnless { it == "Unavailable" }.orEmpty()
+            val storedCvn = cvn.takeUnless { it == "Unavailable" } ?: "Not Read"
+            val alreadySaved = offerSaveIfNew(decoded, storedCal, storedCvn)
+            _statusMessage.value = if (alreadySaved) {
+                "Saved vehicle: ${decoded.displayName}."
+            } else {
+                "Detected ${decoded.displayName}."
+            }
+        } finally {
+            _isReadingVehicleInfo.value = false
+        }
+    }
+
+    private fun offerSaveIfNew(profile: VehicleProfile, calibrationId: String, cvn: String = "Not Read"): Boolean {
+        val existing = _savedVehicles.value.firstOrNull { it.vin.equals(profile.vin, ignoreCase = true) && it.vin.isNotBlank() }
+        if (existing != null) {
+            val refreshed = if (calibrationId.isNotBlank() && calibrationId != existing.calibrationId) {
+                existing.copy(calibrationId = calibrationId)
+            } else {
+                existing
+            }
+            if (refreshed != existing) {
+                _savedVehicles.value = _savedVehicles.value.map { if (it.id == existing.id) refreshed else it }
+            }
+            _activeVehicleId.value = refreshed.id
+            _vehicleInfo.value = refreshed.toVehicleInfo(
+                calibrationId = calibrationId.ifBlank { refreshed.calibrationId },
+                cvn = cvn
             )
-        } catch (_: Exception) {}
+            _vehicleSaveOffer.value = null
+            persistVehicles()
+            return true
+        }
+        _vehicleInfo.value = VehicleInfo(
+            vin = profile.vin,
+            calibrationId = calibrationId.ifBlank { "Not Read" },
+            cvn = cvn,
+            ecuName = "Engine control module",
+            profile = profile
+        )
+        if (profile.vin.length == 17 && profile.displayName != "Generic OBD2 Vehicle") {
+            _vehicleSaveOffer.value = VehicleSaveOffer(profile, calibrationId)
+        }
+        return false
+    }
+
+    private fun upsertVehicle(vehicle: SavedVehicle, matchVin: Boolean) {
+        val vinMatch = if (matchVin && vehicle.vin.length == 17) {
+            _savedVehicles.value.firstOrNull { it.vin.equals(vehicle.vin, ignoreCase = true) }
+        } else {
+            null
+        }
+        val stored = if (vinMatch != null) vehicle.copy(id = vinMatch.id) else vehicle
+        _savedVehicles.value = if (_savedVehicles.value.any { it.id == stored.id }) {
+            _savedVehicles.value.map { if (it.id == stored.id) stored else it }
+        } else {
+            _savedVehicles.value + stored
+        }
+        _activeVehicleId.value = stored.id
+        _vehicleInfo.value = stored.toVehicleInfo(cvn = _vehicleInfo.value.cvn)
+        persistVehicles()
+    }
+
+    private fun restoreActiveSavedVehicle() {
+        val active = _savedVehicles.value.firstOrNull { it.id == _activeVehicleId.value }
+            ?: _savedVehicles.value.firstOrNull()
+        _vehicleInfo.value = active?.toVehicleInfo() ?: VehicleInfo()
+        if (active != null) _activeVehicleId.value = active.id
+    }
+
+    private fun persistVehicles() {
+        val context = appContext ?: return
+        VehicleProfileStore.save(context, _savedVehicles.value, _activeVehicleId.value)
+    }
+
+    private fun clearSensorCache() {
+        synchronized(sensorLock) {
+            supportedDataPids.clear()
+            sensorByPid.clear()
+            sensorCursor = 0
+        }
+        _sensorReadings.value = emptyList()
+    }
+
+    private fun discoverSupportedPids() {
+        _statusMessage.value = "Reading which sensors this vehicle supports…"
+        val found = linkedSetOf<Int>()
+        var range = 0
+        for (step in 0 until 8) {
+            val command = "01%02X".format(range)
+            val raw = try {
+                bluetoothManager.sendCommand(command, timeoutMs = 1500)
+            } catch (_: Exception) {
+                ""
+            }
+            val payload = ObdProtocolHandler.extractPidPayload(raw, command)
+            val mask = ObdProtocolHandler.decodeSupportedPids(payload, firstPid = range + 1)
+            if (mask == null) break
+            val nextRange = range + 0x20
+            found.addAll(mask.filter { it != nextRange })
+            if (nextRange !in mask) break
+            range = nextRange
+        }
+
+        val dataPids = (if (found.isEmpty()) ObdPidCatalog.fallbackPids else found.toList()).sorted()
+        synchronized(sensorLock) {
+            supportedDataPids.clear()
+            supportedDataPids.addAll(dataPids)
+            sensorByPid.keys.retainAll(dataPids.toSet())
+        }
+        publishSensors()
+        val adapterName = _adapterInfo.value.name.ifBlank { "adapter" }
+        val protocol = _adapterInfo.value.protocol
+        _statusMessage.value = "Connected to $adapterName. $protocol. ${dataPids.size} sensors available."
+    }
+
+    private fun updateSensorListFromMetrics(metrics: LiveMetrics) {
+        synchronized(sensorLock) {
+            fun allowed(pid: Int) = supportedDataPids.isEmpty() || pid in supportedDataPids
+            fun putNumber(pid: Int, kind: SensorKind, value: Double?) {
+                if (value == null || !allowed(pid)) return
+                sensorByPid[pid] = SensorReading(pid, ObdPidCatalog.nameOf(pid), kind, number = value)
+            }
+
+            putNumber(0x04, SensorKind.PERCENT, metrics.loadPercent)
+            putNumber(0x05, SensorKind.CELSIUS, metrics.coolantCelsius)
+            putNumber(0x06, SensorKind.SIGNED_PERCENT, metrics.stftBank1)
+            putNumber(0x07, SensorKind.SIGNED_PERCENT, metrics.ltftBank1)
+            putNumber(0x08, SensorKind.SIGNED_PERCENT, metrics.stftBank2)
+            putNumber(0x09, SensorKind.SIGNED_PERCENT, metrics.ltftBank2)
+            putNumber(0x0B, SensorKind.KPA, metrics.mapKpa)
+            putNumber(0x0C, SensorKind.RPM, metrics.rpm)
+            putNumber(0x0D, SensorKind.SPEED_KMH, metrics.speedKmh)
+            putNumber(0x0F, SensorKind.CELSIUS, metrics.intakeAirTempCelsius)
+            putNumber(0x10, SensorKind.GRAMS_PER_SEC, metrics.mafGps)
+            putNumber(0x11, SensorKind.PERCENT, metrics.throttlePercent)
+
+            if (allowed(0x03) && metrics.fuelLoopStatus != null) {
+                sensorByPid[0x03] = SensorReading(
+                    pid = 0x03,
+                    name = ObdPidCatalog.nameOf(0x03),
+                    text = metrics.fuelLoopStatus.title
+                )
+            }
+            if (allowed(0x01)) {
+                val state = if (metrics.milOn) "MIL on" else "MIL off"
+                val count = if (metrics.dtcCount == 1) "1 code" else "${metrics.dtcCount} codes"
+                sensorByPid[0x01] = SensorReading(
+                    pid = 0x01,
+                    name = ObdPidCatalog.nameOf(0x01),
+                    text = "$state · $count"
+                )
+            }
+
+            fun putO2(pid: Int, value: Double?) {
+                if (value == null || !allowed(pid)) return
+                if (sensorByPid[pid]?.text != null) return
+                sensorByPid[pid] = SensorReading(
+                    pid = pid,
+                    name = ObdPidCatalog.nameOf(pid),
+                    kind = SensorKind.O2_VOLTS,
+                    number = value
+                )
+            }
+            putO2(0x14, metrics.o2b1s1)
+            putO2(0x15, metrics.o2b1s2)
+            putO2(0x18, metrics.o2b2s1)
+            putO2(0x19, metrics.o2b2s2)
+        }
+        publishSensors()
+    }
+
+    private fun readAdditionalSensors() {
+        val targets = synchronized(sensorLock) {
+            val extras = supportedDataPids.filter { it !in metricsPids }
+            if (extras.isEmpty()) {
+                emptyList()
+            } else if (sensorsPageVisible) {
+                extras
+            } else {
+                List(4) {
+                    val pid = extras[sensorCursor % extras.size]
+                    sensorCursor++
+                    pid
+                }
+            }
+        }
+
+        var changed = false
+        for (pid in targets) {
+            if (_isReadingCodes.value || _isReadingVehicleInfo.value) break
+            val reading = readSensorPid(pid) ?: continue
+            synchronized(sensorLock) {
+                sensorByPid[pid] = reading
+            }
+            changed = true
+        }
+        if (changed) publishSensors()
+    }
+
+    private fun readSensorPid(pid: Int): SensorReading? {
+        val command = "01%02X".format(pid)
+        val raw = try {
+            bluetoothManager.sendCommand(command, timeoutMs = 900)
+        } catch (_: Exception) {
+            return null
+        }
+        val payload = ObdProtocolHandler.extractPidPayload(raw, command) ?: return null
+        return ObdPidCatalog.decode(pid, payload)
+    }
+
+    private fun publishSensors() {
+        val list = synchronized(sensorLock) {
+            if (supportedDataPids.isEmpty()) {
+                sensorByPid.values.sortedBy { it.pid }
+            } else {
+                supportedDataPids.map { pid -> sensorByPid[pid] ?: ObdPidCatalog.placeholder(pid) }
+            }
+        }
+        _sensorReadings.value = list
     }
 
     private fun startPolling() {
@@ -505,6 +914,8 @@ class ObdScannerViewModel : ViewModel() {
                     )
 
                     _liveMetrics.value = updatedMetrics
+                    updateSensorListFromMetrics(updatedMetrics)
+                    readAdditionalSensors()
 
                     // Record CSV line if enabled
                     if (_isLoggingCsv.value) {

@@ -90,7 +90,11 @@ data class FreezeFrameData(
     val speedKmh: Double? = null,
     val coolantCelsius: Double? = null,
     val loadPercent: Double? = null,
-    val fuelTrimB1: Double? = null
+    val fuelTrimB1: Double? = null,
+    val throttlePercent: Double? = null,
+    val intakeAirCelsius: Double? = null,
+    val mapKpa: Double? = null,
+    val fuelLoopStatus: FuelLoopStatus? = null
 )
 
 data class PerformanceTestState(
@@ -108,7 +112,28 @@ data class VehicleInfo(
     val calibrationId: String = "Not Read",
     val cvn: String = "Not Read",
     val ecuName: String = "Not Read",
-    val profile: VehicleProfile? = null
+    val profile: VehicleProfile? = null,
+    val plateNumber: String = "",
+    val phoneNumber: String = "",
+    val savedId: String? = null
+)
+
+data class SavedVehicle(
+    val id: String,
+    val vin: String = "",
+    val year: String = "",
+    val make: String = "",
+    val model: String = "",
+    val engine: String = "",
+    val displayName: String,
+    val plateNumber: String = "",
+    val phoneNumber: String = "",
+    val calibrationId: String = ""
+)
+
+data class VehicleSaveOffer(
+    val profile: VehicleProfile,
+    val calibrationId: String = ""
 )
 
 data class O2Sample(
@@ -163,3 +188,32 @@ enum class UnitSystem {
     METRIC,
     IMPERIAL
 }
+
+enum class SensorKind {
+    RPM,
+    SPEED_KMH,
+    CELSIUS,
+    PERCENT,
+    SIGNED_PERCENT,
+    KPA,
+    VOLTS,
+    O2_VOLTS,
+    GRAMS_PER_SEC,
+    DEGREES,
+    SECONDS,
+    MINUTES,
+    KILOMETERS,
+    COUNT,
+    RATIO,
+    LITERS_PER_HOUR,
+    NEWTON_METERS,
+    PASCAL
+}
+
+data class SensorReading(
+    val pid: Int,
+    val name: String,
+    val kind: SensorKind? = null,
+    val number: Double? = null,
+    val text: String? = null
+)

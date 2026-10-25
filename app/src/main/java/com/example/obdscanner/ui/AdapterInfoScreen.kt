@@ -1,5 +1,8 @@
 package com.example.obdscanner.ui
 
+import android.content.Intent
+import android.net.Uri
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -12,26 +15,40 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.CloudDownload
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Palette
-import androidx.compose.material.icons.filled.SystemUpdate
-import androidx.compose.material3.Button
+import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.DirectionsCar
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.text.input.KeyboardCapitalization
+import androidx.compose.ui.text.input.KeyboardType
+import com.example.obdscanner.model.SavedVehicle
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.unit.dp
 import com.example.obdscanner.model.AppTheme
 import com.example.obdscanner.model.ObdAdapterInfo
-import com.example.obdscanner.obd.AppUpdateInfo
+import com.example.obdscanner.obd.VersionCheck
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -40,13 +57,47 @@ import java.util.Locale
 fun AdapterInfoScreen(
     adapterInfo: ObdAdapterInfo,
     appTheme: AppTheme,
-    appUpdateInfo: AppUpdateInfo?,
     onSetAppTheme: (AppTheme) -> Unit,
-    onCheckForUpdates: () -> Unit,
-    onDownloadUpdate: (String) -> Unit
+    vehicles: List<SavedVehicle>,
+    activeVehicleId: String?,
+    onSelectVehicle: (String) -> Unit,
+    onDeleteVehicle: (String) -> Unit,
+    onSaveVehicle: (id: String?, name: String, vin: String, plate: String, phone: String) -> Unit
 ) {
+    val context = LocalContext.current
     val buildDateStr = SimpleDateFormat("MMMM dd, yyyy", Locale.US).format(Date())
-    val testRedColor = Color(0xFFFF1744) // Bright vivid red for testing
+    val apkDownloadUrl = "https://aecii.kindfox.org/OBDII/RubiScan-OBDII.apk"
+    val installedVersion = "v${VersionCheck.installedVersionName(context)} (Version Code: ${VersionCheck.installedVersionCode(context)})"
+    var editor by remember { mutableStateOf<VehicleEditorState?>(null) }
+    var pendingDelete by remember { mutableStateOf<SavedVehicle?>(null) }
+
+    editor?.let { state ->
+        VehicleEditorDialog(
+            state = state,
+            onDismiss = { editor = null },
+            onSave = { name, vin, plate, phone ->
+                onSaveVehicle(state.id, name, vin, plate, phone)
+                editor = null
+            }
+        )
+    }
+
+    pendingDelete?.let { vehicle ->
+        AlertDialog(
+            onDismissRequest = { pendingDelete = null },
+            title = { Text("Delete vehicle profile?") },
+            text = { Text("${vehicle.displayName} will be removed from this phone.") },
+            confirmButton = {
+                TextButton(onClick = {
+                    onDeleteVehicle(vehicle.id)
+                    pendingDelete = null
+                }) { Text("Delete") }
+            },
+            dismissButton = {
+                TextButton(onClick = { pendingDelete = null }) { Text("Cancel") }
+            }
+        )
+    }
 
     Column(
         modifier = Modifier
@@ -55,67 +106,110 @@ fun AdapterInfoScreen(
             .verticalScroll(rememberScrollState()),
         verticalArrangement = Arrangement.spacedBy(16.dp)
     ) {
+        Card(
+            modifier = Modifier.fillMaxWidth(),
+            elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
+        ) {
+            Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(Icons.Default.DirectionsCar, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
+                    Spacer(Modifier.width(8.dp))
+                    Text("Vehicles", style = MaterialTheme.typography.titleMedium)
+                }
+                HorizontalDivider()
+                Text(
+                    "Connect and the app reads the VIN. Save each vehicle here with a plate and phone number. Profiles stay on this phone.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                if (vehicles.isEmpty()) {
+                    Text("No saved vehicles yet.", style = MaterialTheme.typography.bodyMedium)
+                } else {
+                    vehicles.forEach { vehicle ->
+                        val active = vehicle.id == activeVehicleId
+                        Column(modifier = Modifier.fillMaxWidth()) {
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Column(
+                                    modifier = Modifier
+                                        .weight(1f)
+                                        .clickable { onSelectVehicle(vehicle.id) }
+                                ) {
+                                    Text(vehicle.displayName, style = MaterialTheme.typography.titleSmall)
+                                    if (vehicle.vin.isNotBlank()) {
+                                        Text(
+                                            vehicle.vin,
+                                            style = MaterialTheme.typography.labelSmall,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                                        )
+                                    }
+                                    if (vehicle.plateNumber.isNotBlank()) {
+                                        Text("Plate ${vehicle.plateNumber}", style = MaterialTheme.typography.bodySmall)
+                                    }
+                                    if (vehicle.phoneNumber.isNotBlank()) {
+                                        Text(vehicle.phoneNumber, style = MaterialTheme.typography.bodySmall)
+                                    }
+                                    if (active) {
+                                        Text(
+                                            "In use",
+                                            style = MaterialTheme.typography.labelSmall,
+                                            color = MaterialTheme.colorScheme.primary
+                                        )
+                                    }
+                                }
+                                TextButton(onClick = {
+                                    editor = VehicleEditorState(
+                                        id = vehicle.id,
+                                        name = vehicle.displayName,
+                                        vin = vehicle.vin,
+                                        plate = vehicle.plateNumber,
+                                        phone = vehicle.phoneNumber
+                                    )
+                                }) { Text("Edit") }
+                                IconButton(onClick = { pendingDelete = vehicle }) {
+                                    Icon(Icons.Default.Delete, contentDescription = "Delete ${vehicle.displayName}")
+                                }
+                            }
+                            HorizontalDivider()
+                        }
+                    }
+                }
+                OutlinedButton(
+                    onClick = {
+                        editor = VehicleEditorState(id = null, name = "", vin = "", plate = "", phone = "")
+                    },
+                    modifier = Modifier.fillMaxWidth()
+                ) { Text("Add vehicle") }
+            }
+        }
+
         // About Rubi-Scan OBDII Card
         Card(
             modifier = Modifier.fillMaxWidth(),
             elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
         ) {
             Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Icon(Icons.Default.Info, contentDescription = null, tint = testRedColor)
-                        Spacer(Modifier.width(8.dp))
-                        Text("About Rubi-Scan OBDII", style = MaterialTheme.typography.titleMedium, color = testRedColor)
-                    }
-
-                    Button(onClick = onCheckForUpdates) {
-                        Icon(Icons.Default.CloudDownload, contentDescription = null)
-                        Spacer(Modifier.width(4.dp))
-                        Text("Check for Updates")
-                    }
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(Icons.Default.Info, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
+                    Spacer(Modifier.width(8.dp))
+                    Text("About Rubi-Scan OBDII", style = MaterialTheme.typography.titleMedium)
                 }
 
                 HorizontalDivider()
 
-                InfoRow("Application Name", "Rubi-Scan OBDII", "Vehicle Diagnostic Scanner", valueColor = testRedColor)
-                InfoRow("Installed Version", "v0.2.0 (Version Code: 2)", "Current Release", valueColor = testRedColor)
-                InfoRow("Build Date", buildDateStr, "Compilation Date", valueColor = testRedColor)
-                InfoRow("Update Server Location", "https://aecii.kindfox.org/OBDII/version.json", "Apache Server", valueColor = testRedColor)
-
-                if (appUpdateInfo != null) {
-                    HorizontalDivider(modifier = Modifier.padding(vertical = 4.dp))
-                    if (appUpdateInfo.isUpdateAvailable) {
-                        Text(
-                            "🎉 New Update Available: v${appUpdateInfo.latestVersionName}",
-                            style = MaterialTheme.typography.titleSmall,
-                            color = testRedColor
-                        )
-                        Text(
-                            "Release Notes: ${appUpdateInfo.releaseNotes}",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = testRedColor
-                        )
-                        Spacer(Modifier.height(4.dp))
-                        Button(
-                            onClick = { onDownloadUpdate(appUpdateInfo.downloadUrl) },
-                            modifier = Modifier.fillMaxWidth()
-                        ) {
-                            Icon(Icons.Default.SystemUpdate, contentDescription = null)
-                            Spacer(Modifier.width(6.dp))
-                            Text("Download & Install v${appUpdateInfo.latestVersionName}")
-                        }
-                    } else {
-                        Text(
-                            "✓ Rubi-Scan OBDII status: ${if (appUpdateInfo.statusText.isNotBlank()) appUpdateInfo.statusText else "Up to date"}",
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = testRedColor
-                        )
+                InfoRow("Application Name", "Rubi-Scan OBDII", "Vehicle Diagnostic Scanner")
+                InfoRow("Installed Version", installedVersion, "Current Release")
+                InfoRow("Build Date", buildDateStr, "Compilation Date")
+                Text(
+                    text = apkDownloadUrl,
+                    style = MaterialTheme.typography.titleSmall,
+                    textDecoration = TextDecoration.Underline,
+                    modifier = Modifier.clickable {
+                        context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(apkDownloadUrl)))
                     }
-                }
+                )
             }
         }
 
@@ -181,23 +275,98 @@ fun AdapterInfoScreen(
     }
 }
 
+private data class VehicleEditorState(
+    val id: String?,
+    val name: String,
+    val vin: String,
+    val plate: String,
+    val phone: String
+)
+
+@Composable
+private fun VehicleEditorDialog(
+    state: VehicleEditorState,
+    onDismiss: () -> Unit,
+    onSave: (name: String, vin: String, plate: String, phone: String) -> Unit
+) {
+    var name by remember(state.id) { mutableStateOf(state.name) }
+    var vin by remember(state.id) { mutableStateOf(state.vin) }
+    var plate by remember(state.id) { mutableStateOf(state.plate) }
+    var phone by remember(state.id) { mutableStateOf(state.phone) }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(if (state.id == null) "Add vehicle" else "Edit vehicle") },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                OutlinedTextField(
+                    value = name,
+                    onValueChange = { name = it },
+                    label = { Text("Name") },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth()
+                )
+                OutlinedTextField(
+                    value = vin,
+                    onValueChange = { vin = it.uppercase() },
+                    label = { Text("VIN") },
+                    singleLine = true,
+                    keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.Characters),
+                    modifier = Modifier.fillMaxWidth()
+                )
+                OutlinedTextField(
+                    value = plate,
+                    onValueChange = { plate = it.uppercase() },
+                    label = { Text("Plate number") },
+                    singleLine = true,
+                    keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.Characters),
+                    modifier = Modifier.fillMaxWidth()
+                )
+                OutlinedTextField(
+                    value = phone,
+                    onValueChange = { phone = it },
+                    label = { Text("Phone number") },
+                    singleLine = true,
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Phone),
+                    modifier = Modifier.fillMaxWidth()
+                )
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = { onSave(name, vin, plate, phone) }) { Text("Save") }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) { Text("Cancel") }
+        }
+    )
+}
+
 @Composable
 private fun InfoRow(
     label: String,
     value: String,
     caption: String? = null,
-    valueColor: Color = MaterialTheme.colorScheme.onSurface
+    valueColor: Color = MaterialTheme.colorScheme.onSurface,
+    textColor: Color? = null
 ) {
     Column(modifier = Modifier.fillMaxWidth()) {
         Row(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.SpaceBetween
         ) {
-            Text(label, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-            Text(value, style = MaterialTheme.typography.titleSmall, color = valueColor)
+            Text(
+                label,
+                style = MaterialTheme.typography.bodyMedium,
+                color = textColor ?: MaterialTheme.colorScheme.onSurfaceVariant
+            )
+            Text(value, style = MaterialTheme.typography.titleSmall, color = textColor ?: valueColor)
         }
         if (caption != null) {
-            Text(caption, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.outline)
+            Text(
+                caption,
+                style = MaterialTheme.typography.labelSmall,
+                color = textColor ?: MaterialTheme.colorScheme.outline
+            )
         }
     }
 }

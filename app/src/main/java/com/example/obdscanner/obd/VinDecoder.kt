@@ -57,14 +57,14 @@ object VinDecoder {
                         'E' -> "Grand Cherokee"
                         'A' -> "Cherokee"
                         'N' -> "Compass / Patriot"
-                        else -> "Wrangler JKU / JK"
+                        else -> "Jeep"
                     }
                     engineStr = when (vdsChar8) {
                         'G', 'D', 'E' -> "3.6L V6 Pentastar Engine"
                         '1', 'S' -> "3.8L V6 Engine"
                         'B', 'K' -> "2.0L I4 Turbo Engine"
                         'M', 'V' -> "5.7L V8 HEMI Engine"
-                        else -> "3.6L V6 Pentastar Engine"
+                        else -> ""
                     }
                 }
             }
@@ -145,7 +145,18 @@ object VinDecoder {
             }
         }
 
-        val displayName = "$yearStr $makeStr $modelStr ($engineStr)".trim()
+        val nameParts = buildList {
+            if (yearStr != "Unknown") add(yearStr)
+            add(makeStr)
+            if (modelStr.isNotBlank() && !modelStr.equals(makeStr, ignoreCase = true) && modelStr != "Vehicle") {
+                add(modelStr)
+            }
+        }
+        val displayName = if (engineStr.isNotBlank() && engineStr != "Engine") {
+            "${nameParts.joinToString(" ")} ($engineStr)"
+        } else {
+            nameParts.joinToString(" ")
+        }.trim()
 
         return VehicleProfile(
             vin = cleanVin,
@@ -185,7 +196,7 @@ object VinDecoder {
             '7' -> "2007"
             '8' -> "2008"
             '9' -> "2009"
-            else -> "2015"
+            else -> "Unknown"
         }
     }
 }
