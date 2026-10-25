@@ -59,7 +59,7 @@ Screen shots:
 
 Sample PDF report: 
 [RubiScan_Inspection_Report (2).pdf](https://github.com/user-attachments/files/33938822/RubiScan_Inspection_Report.2.pdf)
-
+<img width="1483" height="1338" alt="image" src="https://github.com/user-attachments/assets/4919c208-86b4-4c9b-a8e6-ba8d30d2b4c0" />
 
 <img width="430" height="959" alt="image" src="https://github.com/user-attachments/assets/b94d0369-f2b1-4640-b362-2195bdce97a3" />
 <img width="430" height="959" alt="image" src="https://github.com/user-attachments/assets/900112b4-b9b6-4b7e-91ef-b2aa0a9bc338" />
