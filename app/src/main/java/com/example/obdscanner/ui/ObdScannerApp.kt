@@ -1,8 +1,10 @@
 package com.example.obdscanner.ui
 
+import android.app.Activity
 import android.bluetooth.BluetoothDevice
 import android.content.Intent
 import android.net.Uri
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.isSystemInDarkTheme
@@ -32,7 +34,6 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.OutlinedButton
-import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -50,9 +51,6 @@ import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
-import androidx.compose.foundation.text.KeyboardOptions
-import androidx.compose.ui.text.input.KeyboardCapitalization
-import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -115,8 +113,15 @@ fun ObdScannerApp(
     }
 
     val colorScheme = if (useDarkTheme) darkColorScheme() else lightColorScheme()
+    val activity = context as? Activity
 
     MaterialTheme(colorScheme = colorScheme) {
+        BackHandler(enabled = vehicleSaveOffer == null) {
+            if (!viewModel.requestSavePromptOnExit()) {
+                activity?.finish()
+            }
+        }
+
         availableUpdate?.let { update ->
             AlertDialog(
                 onDismissRequest = { viewModel.dismissUpdateNotice() },
@@ -150,11 +155,9 @@ fun ObdScannerApp(
         }
 
         vehicleSaveOffer?.let { offer ->
-            var plate by remember(offer.profile.vin) { mutableStateOf("") }
-            var phone by remember(offer.profile.vin) { mutableStateOf("") }
             AlertDialog(
-                onDismissRequest = { viewModel.dismissVehicleOffer() },
-                title = { Text("Save vehicle profile") },
+                onDismissRequest = { viewModel.hideExitSavePrompt() },
+                title = { Text("Save vehicle profile?") },
                 text = {
                     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                         Text(offer.profile.displayName)
@@ -164,36 +167,26 @@ fun ObdScannerApp(
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
                         Text(
-                            "Save this vehicle on this phone. You can keep more than one.",
+                            "This vehicle is not saved yet.",
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                        OutlinedTextField(
-                            value = plate,
-                            onValueChange = { plate = it },
-                            label = { Text("Plate number") },
-                            singleLine = true,
-                            keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.Characters),
-                            modifier = Modifier.fillMaxWidth()
-                        )
-                        OutlinedTextField(
-                            value = phone,
-                            onValueChange = { phone = it },
-                            label = { Text("Phone number") },
-                            singleLine = true,
-                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Phone),
-                            modifier = Modifier.fillMaxWidth()
                         )
                     }
                 },
                 confirmButton = {
-                    TextButton(onClick = { viewModel.saveOfferedVehicle(plate, phone) }) {
-                        Text("Save")
-                    }
-                },
-                dismissButton = {
-                    TextButton(onClick = { viewModel.dismissVehicleOffer() }) {
-                        Text("Not now")
+                    Column(horizontalAlignment = Alignment.End) {
+                        TextButton(onClick = {
+                            viewModel.saveOfferedVehicle()
+                            activity?.finish()
+                        }) { Text("Save") }
+                        TextButton(onClick = {
+                            viewModel.declineVehicleSave()
+                            activity?.finish()
+                        }) { Text("Not now") }
+                        TextButton(onClick = {
+                            viewModel.neverAskToSaveVehicles()
+                            activity?.finish()
+                        }) { Text("Never ask again") }
                     }
                 }
             )
@@ -315,7 +308,8 @@ fun ObdScannerApp(
                             o2History = o2History,
                             onSetSpeedUnit = { viewModel.setSpeedUnit(it) },
                             onSetTemperatureUnit = { viewModel.setTemperatureUnit(it) },
-                            onSetO2DisplayMode = { viewModel.setO2DisplayMode(it) }
+                            onSetO2DisplayMode = { viewModel.setO2DisplayMode(it) },
+                            onOpenTroubleCodes = { selectedTab = 2 }
                         )
                         1 -> SensorListScreen(
                             readings = sensorReadings,
@@ -325,8 +319,6 @@ fun ObdScannerApp(
                         2 -> TroubleCodesScreen(
                             codes = troubleCodes,
                             vehicleProfile = vehicleInfo.profile,
-                            plateNumber = vehicleInfo.plateNumber,
-                            phoneNumber = vehicleInfo.phoneNumber,
                             freezeFrame = freezeFrame,
                             units = displayUnits,
                             isConnected = isConnected,
@@ -354,8 +346,8 @@ fun ObdScannerApp(
                             activeVehicleId = activeVehicleId,
                             onSelectVehicle = { viewModel.selectVehicle(it) },
                             onDeleteVehicle = { viewModel.deleteVehicle(it) },
-                            onSaveVehicle = { id, name, vin, plate, phone, make, model, engine ->
-                                viewModel.saveVehicleForm(id, name, vin, plate, phone, make, model, engine)
+                            onSaveVehicle = { id, name, vin, make, model, engine ->
+                                viewModel.saveVehicleForm(id, name, vin, make, model, engine)
                             }
                         )
                     }

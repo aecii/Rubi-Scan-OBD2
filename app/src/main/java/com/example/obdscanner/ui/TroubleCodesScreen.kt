@@ -66,8 +66,6 @@ import java.io.File
 fun TroubleCodesScreen(
     codes: List<DtcCode>,
     vehicleProfile: VehicleProfile?,
-    plateNumber: String = "",
-    phoneNumber: String = "",
     freezeFrame: FreezeFrameData?,
     units: DisplayUnits,
     isConnected: Boolean,
@@ -158,20 +156,6 @@ fun TroubleCodesScreen(
                             style = MaterialTheme.typography.titleMedium,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
-                        if (plateNumber.isNotBlank()) {
-                            Text(
-                                text = "Plate $plateNumber",
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                        }
-                        if (phoneNumber.isNotBlank()) {
-                            Text(
-                                text = phoneNumber,
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                        }
                     }
                 }
             }

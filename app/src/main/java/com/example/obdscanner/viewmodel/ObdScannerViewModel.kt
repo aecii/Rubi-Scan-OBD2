@@ -98,6 +98,8 @@ class ObdScannerViewModel : ViewModel() {
 
     private val _vehicleSaveOffer = MutableStateFlow<VehicleSaveOffer?>(null)
     val vehicleSaveOffer: StateFlow<VehicleSaveOffer?> = _vehicleSaveOffer.asStateFlow()
+    private var pendingVehicleSave: VehicleSaveOffer? = null
+    private var neverAskToSave = false
 
     private var appContext: Context? = null
     private var demoScenario: DemoScenario? = null
@@ -155,6 +157,7 @@ class ObdScannerViewModel : ViewModel() {
     fun checkForUpdateOnLaunch(context: Context) {
         val application = context.applicationContext
         appContext = application
+        neverAskToSave = VehicleProfileStore.neverAskToSave(application)
         val stored = VehicleProfileStore.load(application)
         _savedVehicles.value = stored.vehicles
         _activeVehicleId.value = stored.activeId
@@ -195,6 +198,7 @@ class ObdScannerViewModel : ViewModel() {
                 _connectionState.value = ConnectionState.Connected(adapterInfoResult.name)
                 _vehicleInfo.value = VehicleInfo()
                 _vehicleSaveOffer.value = null
+                pendingVehicleSave = null
                 _statusMessage.value = "Connected to ${adapterInfoResult.name}. Protocol: ${adapterInfoResult.protocol}."
 
                 readVehicleIdentityInternal()
@@ -293,10 +297,7 @@ class ObdScannerViewModel : ViewModel() {
                 else -> reading
             }
         }
-        val alreadySaved = offerSaveIfNew(scenario.profile, scenario.calibrationId, scenario.cvn)
-        if (!offerSave && !alreadySaved) {
-            _vehicleSaveOffer.value = null
-        }
+        offerSaveIfNew(scenario.profile, scenario.calibrationId, scenario.cvn)
         startDemoLiveRead()
     }
 
@@ -582,12 +583,32 @@ class ObdScannerViewModel : ViewModel() {
         }
     }
 
-    fun dismissVehicleOffer() {
+    fun requestSavePromptOnExit(): Boolean {
+        if (neverAskToSave) return false
+        val pending = pendingVehicleSave ?: return false
+        if (_vehicleSaveOffer.value != null) return true
+        _vehicleSaveOffer.value = pending
+        return true
+    }
+
+    fun hideExitSavePrompt() {
         _vehicleSaveOffer.value = null
     }
 
-    fun saveOfferedVehicle(plateNumber: String, phoneNumber: String) {
-        val offer = _vehicleSaveOffer.value ?: return
+    fun declineVehicleSave() {
+        pendingVehicleSave = null
+        _vehicleSaveOffer.value = null
+    }
+
+    fun neverAskToSaveVehicles() {
+        neverAskToSave = true
+        pendingVehicleSave = null
+        _vehicleSaveOffer.value = null
+        appContext?.let { VehicleProfileStore.setNeverAskToSave(it) }
+    }
+
+    fun saveOfferedVehicle() {
+        val offer = _vehicleSaveOffer.value ?: pendingVehicleSave ?: return
         val vehicle = SavedVehicle(
             id = UUID.randomUUID().toString(),
             vin = offer.profile.vin,
@@ -596,11 +617,10 @@ class ObdScannerViewModel : ViewModel() {
             model = offer.profile.model,
             engine = offer.profile.engine,
             displayName = offer.profile.displayName,
-            plateNumber = plateNumber.trim().uppercase(),
-            phoneNumber = phoneNumber.trim(),
             calibrationId = offer.calibrationId
         )
         upsertVehicle(vehicle, matchVin = true)
+        pendingVehicleSave = null
         _vehicleSaveOffer.value = null
         _statusMessage.value = "Saved ${vehicle.displayName}."
     }
@@ -633,20 +653,15 @@ class ObdScannerViewModel : ViewModel() {
         id: String?,
         displayName: String,
         vin: String,
-        plateNumber: String,
-        phoneNumber: String,
         make: String = "",
         model: String = "",
         engine: String = ""
     ) {
         val cleanVin = vin.trim().uppercase().filter { it.isLetterOrDigit() }
         val decoded = if (cleanVin.length >= 11) VinDecoder.decode(cleanVin) else null
-        val plate = plateNumber.trim().uppercase()
-        val phone = phoneNumber.trim()
         val name = displayName.trim().ifBlank {
-            decoded?.displayName?.takeUnless { it == "Generic OBD2 Vehicle" } ?: plate
+            decoded?.displayName?.takeUnless { it == "Generic OBD2 Vehicle" } ?: "Vehicle"
         }
-        if (name.isBlank()) return
         val existing = id?.let { savedId -> _savedVehicles.value.firstOrNull { it.id == savedId } }
         val vehicle = SavedVehicle(
             id = existing?.id ?: UUID.randomUUID().toString(),
@@ -656,8 +671,6 @@ class ObdScannerViewModel : ViewModel() {
             model = model.trim().ifBlank { knownText(decoded?.model).orEmpty() },
             engine = engine.trim().ifBlank { knownText(decoded?.engine).orEmpty() },
             displayName = name,
-            plateNumber = plate,
-            phoneNumber = phone,
             calibrationId = existing?.calibrationId.orEmpty()
         )
         upsertVehicle(vehicle, matchVin = existing == null)
@@ -729,6 +742,7 @@ class ObdScannerViewModel : ViewModel() {
                 calibrationId = calibrationId.ifBlank { refreshed.calibrationId },
                 cvn = cvn
             )
+            pendingVehicleSave = null
             _vehicleSaveOffer.value = null
             persistVehicles()
             return true
@@ -740,9 +754,16 @@ class ObdScannerViewModel : ViewModel() {
             ecuName = "Engine control module",
             profile = profile
         )
-        if (profile.vin.length == 17 && profile.displayName != "Generic OBD2 Vehicle") {
-            _vehicleSaveOffer.value = VehicleSaveOffer(profile, calibrationId)
+        pendingVehicleSave = if (
+            !neverAskToSave &&
+            profile.vin.length == 17 &&
+            profile.displayName != "Generic OBD2 Vehicle"
+        ) {
+            VehicleSaveOffer(profile, calibrationId)
+        } else {
+            null
         }
+        _vehicleSaveOffer.value = null
         return false
     }
 
@@ -760,6 +781,10 @@ class ObdScannerViewModel : ViewModel() {
         }
         _activeVehicleId.value = stored.id
         _vehicleInfo.value = stored.toVehicleInfo(cvn = _vehicleInfo.value.cvn)
+        if (pendingVehicleSave?.profile?.vin.equals(stored.vin, ignoreCase = true)) {
+            pendingVehicleSave = null
+            _vehicleSaveOffer.value = null
+        }
         persistVehicles()
     }
 

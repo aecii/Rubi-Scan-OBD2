@@ -50,7 +50,8 @@ fun DashboardScreen(
     o2History: List<O2Sample>,
     onSetSpeedUnit: (SpeedUnit) -> Unit,
     onSetTemperatureUnit: (TemperatureUnit) -> Unit,
-    onSetO2DisplayMode: (O2DisplayMode) -> Unit
+    onSetO2DisplayMode: (O2DisplayMode) -> Unit,
+    onOpenTroubleCodes: () -> Unit
 ) {
     Column(
         modifier = Modifier
@@ -60,7 +61,11 @@ fun DashboardScreen(
         verticalArrangement = Arrangement.spacedBy(14.dp)
     ) {
         // MIL / Check Engine Banner (ORANGE when fault code present)
-        MilStatusBanner(milOn = metrics.milOn, dtcCount = metrics.dtcCount)
+        MilStatusBanner(
+            milOn = metrics.milOn,
+            dtcCount = metrics.dtcCount,
+            onOpenTroubleCodes = onOpenTroubleCodes
+        )
 
         // Fuel Loop Status Card
         metrics.fuelLoopStatus?.let { loop ->
@@ -285,17 +290,16 @@ fun UnitSelectorRow(
 }
 
 @Composable
-private fun MilStatusBanner(milOn: Boolean, dtcCount: Int) {
+private fun MilStatusBanner(
+    milOn: Boolean,
+    dtcCount: Int,
+    onOpenTroubleCodes: () -> Unit
+) {
     val isWarning = milOn || dtcCount > 0
-    // ORANGE theme for fault codes
     val cardColor = if (isWarning) Color(0xFFFF9800).copy(alpha = 0.18f) else MaterialTheme.colorScheme.primaryContainer
     val iconColor = if (isWarning) Color(0xFFE65100) else MaterialTheme.colorScheme.primary
     val textColor = if (isWarning) Color(0xFFE65100) else MaterialTheme.colorScheme.onPrimaryContainer
-
-    Card(
-        modifier = Modifier.fillMaxWidth(),
-        colors = CardDefaults.cardColors(containerColor = cardColor)
-    ) {
+    val body: @Composable () -> Unit = {
         Row(
             modifier = Modifier.padding(16.dp),
             verticalAlignment = Alignment.CenterVertically
@@ -313,12 +317,29 @@ private fun MilStatusBanner(milOn: Boolean, dtcCount: Int) {
                     color = textColor
                 )
                 Text(
-                    text = if (isWarning) "$dtcCount fault code(s) reported by ECU. Tap 'Trouble Codes' tab to inspect." else "No active Malfunction Indicator Light (MIL) requested.",
+                    text = if (isWarning) {
+                        "$dtcCount fault code(s) reported by the engine computer. Tap to open them."
+                    } else {
+                        "No active Malfunction Indicator Light (MIL) requested."
+                    },
                     style = MaterialTheme.typography.bodyMedium,
                     color = textColor
                 )
             }
         }
+    }
+
+    if (isWarning) {
+        Card(
+            onClick = onOpenTroubleCodes,
+            modifier = Modifier.fillMaxWidth(),
+            colors = CardDefaults.cardColors(containerColor = cardColor)
+        ) { body() }
+    } else {
+        Card(
+            modifier = Modifier.fillMaxWidth(),
+            colors = CardDefaults.cardColors(containerColor = cardColor)
+        ) { body() }
     }
 }
 

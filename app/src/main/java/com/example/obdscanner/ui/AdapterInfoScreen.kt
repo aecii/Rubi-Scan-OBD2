@@ -38,7 +38,6 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.text.input.KeyboardCapitalization
-import androidx.compose.ui.text.input.KeyboardType
 import com.example.obdscanner.model.SavedVehicle
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
@@ -73,8 +72,6 @@ fun AdapterInfoScreen(
         id: String?,
         name: String,
         vin: String,
-        plate: String,
-        phone: String,
         make: String,
         model: String,
         engine: String
@@ -91,8 +88,8 @@ fun AdapterInfoScreen(
         VehicleEditorDialog(
             state = state,
             onDismiss = { editor = null },
-            onSave = { name, vin, plate, phone, make, model, engine ->
-                onSaveVehicle(state.id, name, vin, plate, phone, make, model, engine)
+            onSave = { name, vin, make, model, engine ->
+                onSaveVehicle(state.id, name, vin, make, model, engine)
                 editor = null
             }
         )
@@ -161,12 +158,6 @@ fun AdapterInfoScreen(
                                             color = MaterialTheme.colorScheme.onSurfaceVariant
                                         )
                                     }
-                                    if (vehicle.plateNumber.isNotBlank()) {
-                                        Text("Plate ${vehicle.plateNumber}", style = MaterialTheme.typography.bodySmall)
-                                    }
-                                    if (vehicle.phoneNumber.isNotBlank()) {
-                                        Text(vehicle.phoneNumber, style = MaterialTheme.typography.bodySmall)
-                                    }
                                     if (active) {
                                         Text(
                                             "In use",
@@ -180,8 +171,6 @@ fun AdapterInfoScreen(
                                         id = vehicle.id,
                                         name = vehicle.displayName,
                                         vin = vehicle.vin,
-                                        plate = vehicle.plateNumber,
-                                        phone = vehicle.phoneNumber,
                                         make = vehicle.make,
                                         model = vehicle.model,
                                         engine = vehicle.engine
@@ -201,8 +190,6 @@ fun AdapterInfoScreen(
                             id = null,
                             name = "",
                             vin = "",
-                            plate = "",
-                            phone = "",
                             make = "",
                             model = "",
                             engine = ""
@@ -314,8 +301,6 @@ private data class VehicleEditorState(
     val id: String?,
     val name: String,
     val vin: String,
-    val plate: String,
-    val phone: String,
     val make: String,
     val model: String,
     val engine: String
@@ -325,12 +310,10 @@ private data class VehicleEditorState(
 private fun VehicleEditorDialog(
     state: VehicleEditorState,
     onDismiss: () -> Unit,
-    onSave: (name: String, vin: String, plate: String, phone: String, make: String, model: String, engine: String) -> Unit
+    onSave: (name: String, vin: String, make: String, model: String, engine: String) -> Unit
 ) {
     var name by remember(state.id) { mutableStateOf(state.name) }
     var vin by remember(state.id) { mutableStateOf(state.vin) }
-    var plate by remember(state.id) { mutableStateOf(state.plate) }
-    var phone by remember(state.id) { mutableStateOf(state.phone) }
     var make by remember(state.id) { mutableStateOf(state.make) }
     var model by remember(state.id) { mutableStateOf(state.model) }
     var engine by remember(state.id) { mutableStateOf(state.engine) }
@@ -381,26 +364,10 @@ private fun VehicleEditorDialog(
                     singleLine = true,
                     modifier = Modifier.fillMaxWidth()
                 )
-                OutlinedTextField(
-                    value = plate,
-                    onValueChange = { plate = it.uppercase() },
-                    label = { Text("Plate number") },
-                    singleLine = true,
-                    keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.Characters),
-                    modifier = Modifier.fillMaxWidth()
-                )
-                OutlinedTextField(
-                    value = phone,
-                    onValueChange = { phone = it },
-                    label = { Text("Phone number") },
-                    singleLine = true,
-                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Phone),
-                    modifier = Modifier.fillMaxWidth()
-                )
             }
         },
         confirmButton = {
-            TextButton(onClick = { onSave(name, vin, plate, phone, make, model, engine) }) { Text("Save") }
+            TextButton(onClick = { onSave(name, vin, make, model, engine) }) { Text("Save") }
         },
         dismissButton = {
             TextButton(onClick = onDismiss) { Text("Cancel") }

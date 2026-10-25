@@ -10,6 +10,19 @@ object VehicleProfileStore {
 
     private const val PREFS = "rubiscan_vehicles"
     private const val KEY = "saved_json"
+    private const val KEY_NEVER_ASK = "never_ask_save"
+
+    fun neverAskToSave(context: Context): Boolean {
+        return context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+            .getBoolean(KEY_NEVER_ASK, false)
+    }
+
+    fun setNeverAskToSave(context: Context) {
+        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+            .edit()
+            .putBoolean(KEY_NEVER_ASK, true)
+            .apply()
+    }
 
     data class Snapshot(
         val vehicles: List<SavedVehicle>,
@@ -37,8 +50,6 @@ object VehicleProfileStore {
                             model = item.optString("model"),
                             engine = item.optString("engine"),
                             displayName = name,
-                            plateNumber = item.optString("plateNumber"),
-                            phoneNumber = item.optString("phoneNumber"),
                             calibrationId = item.optString("calibrationId")
                         )
                     )
@@ -62,8 +73,6 @@ object VehicleProfileStore {
                     .put("model", vehicle.model)
                     .put("engine", vehicle.engine)
                     .put("displayName", vehicle.displayName)
-                    .put("plateNumber", vehicle.plateNumber)
-                    .put("phoneNumber", vehicle.phoneNumber)
                     .put("calibrationId", vehicle.calibrationId)
             )
         }
@@ -94,8 +103,6 @@ fun SavedVehicle.toVehicleInfo(
             engine = engine,
             displayName = displayName
         ),
-        plateNumber = plateNumber,
-        phoneNumber = phoneNumber,
         savedId = id
     )
 }

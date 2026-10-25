@@ -113,8 +113,6 @@ data class VehicleInfo(
     val cvn: String = "Not Read",
     val ecuName: String = "Not Read",
     val profile: VehicleProfile? = null,
-    val plateNumber: String = "",
-    val phoneNumber: String = "",
     val savedId: String? = null
 )
 
@@ -126,8 +124,6 @@ data class SavedVehicle(
     val model: String = "",
     val engine: String = "",
     val displayName: String,
-    val plateNumber: String = "",
-    val phoneNumber: String = "",
     val calibrationId: String = ""
 )
 
