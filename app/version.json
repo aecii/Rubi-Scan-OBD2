@@ -1,6 +1,6 @@
 {
-    "versionCode": 2,
-    "versionName": "0.2.0",
+    "versionCode": 3,
+    "versionName": "0.3.0",
     "downloadUrl": "https://aecii.kindfox.org/OBDII/RubiScan-OBDII.apk",
-    "releaseNotes": "Added auto-update support, live sensor CSV logging, 0-60 mph timer, and video HUD overlay."
+    "releaseNotes": "Demo Mode rolls a new VIN and stored trouble codes, and the Demo label turns yellow while it is on. Tap the fault banner to open the trouble codes. A detected vehicle can be saved when you leave."
 }

@@ -29,6 +29,7 @@ import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
+import androidx.compose.material3.FilterChipDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.NavigationBar
@@ -230,7 +231,22 @@ fun ObdScannerApp(
                         FilterChip(
                             selected = isDemoMode,
                             onClick = { viewModel.toggleDemoMode() },
-                            label = { Text(if (isDemoMode) "Demo: ON" else "Demo Mode", style = MaterialTheme.typography.labelSmall) }
+                            label = {
+                                Text(
+                                    if (isDemoMode) "Demo: ON" else "Demo Mode",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = if (isDemoMode) Color.Black else Color.Unspecified
+                                )
+                            },
+                            colors = FilterChipDefaults.filterChipColors(
+                                selectedContainerColor = Color(0xFFFFEB3B),
+                                selectedLabelColor = Color.Black
+                            ),
+                            border = FilterChipDefaults.filterChipBorder(
+                                enabled = true,
+                                selected = isDemoMode,
+                                selectedBorderColor = Color.Black
+                            )
                         )
                         Spacer(Modifier.width(6.dp))
                         if (isConnected) {
@@ -290,13 +306,13 @@ fun ObdScannerApp(
                     // Status banner bar
                     Surface(
                         modifier = Modifier.fillMaxWidth(),
-                        color = MaterialTheme.colorScheme.surfaceVariant
+                        color = if (isDemoMode) Color(0xFFFFEB3B) else MaterialTheme.colorScheme.surfaceVariant
                     ) {
                         Text(
                             text = statusMessage,
                             style = MaterialTheme.typography.labelSmall,
                             modifier = Modifier.padding(horizontal = 16.dp, vertical = 6.dp),
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                            color = if (isDemoMode) Color.Black else MaterialTheme.colorScheme.onSurfaceVariant
                         )
                     }
 
