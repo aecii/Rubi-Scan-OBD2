@@ -80,6 +80,7 @@ fun AdapterInfoScreen(
     val context = LocalContext.current
     val buildDateStr = SimpleDateFormat("MMMM dd, yyyy", Locale.US).format(Date())
     val apkDownloadUrl = "https://aecii.kindfox.org/OBDII/RubiScan-OBDII.apk"
+    val websiteUrl = "https://aecii.kindfox.org/OBDII/"
     val installedVersion = "v${VersionCheck.installedVersionName(context)} (Version Code: ${VersionCheck.installedVersionCode(context)})"
     var editor by remember { mutableStateOf<VehicleEditorState?>(null) }
     var pendingDelete by remember { mutableStateOf<SavedVehicle?>(null) }
@@ -217,6 +218,19 @@ fun AdapterInfoScreen(
                 InfoRow("Application Name", "Rubi-Scan OBDII", "Vehicle Diagnostic Scanner")
                 InfoRow("Installed Version", installedVersion, "Current Release")
                 InfoRow("Build Date", buildDateStr, "Compilation Date")
+                Text(
+                    text = "Website",
+                    style = MaterialTheme.typography.labelMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                Text(
+                    text = websiteUrl,
+                    style = MaterialTheme.typography.titleSmall,
+                    textDecoration = TextDecoration.Underline,
+                    modifier = Modifier.clickable {
+                        context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(websiteUrl)))
+                    }
+                )
                 Text(
                     text = apkDownloadUrl,
                     style = MaterialTheme.typography.titleSmall,
