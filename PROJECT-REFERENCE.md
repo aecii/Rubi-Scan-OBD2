@@ -18,6 +18,7 @@ The app stays generic until a VIN identifies the manufacturer, or the user names
 - Version file: `https://aecii.kindfox.org/OBDII/version.json`
 - Server files: `/var/www/html/OBDII/` on `aecii.kindfox.org` (SSH `aecii@aecii.kindfox.org`). That folder is writable by `aecii`. `/var/www/html` itself is not.
 - Page source in the repo: `web/index.html`
+- License: Apache License 2.0. The text is `LICENSE`. Copyright 2026 aecii_3d. Source files carry the Apache header.
 
 Version on `main` when this note was written: 0.3.0, version code 3. The `v0.3.0` tag is `7aae561`. The About link and download-page footer came after that tag and did not bump the version.
 

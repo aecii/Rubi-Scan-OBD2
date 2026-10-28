@@ -1,3 +1,19 @@
+/*
+ * Copyright 2026 aecii_3d
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
 package com.example.obdscanner.ui
 
 import android.content.Intent
@@ -81,6 +97,7 @@ fun AdapterInfoScreen(
     val buildDateStr = SimpleDateFormat("MMMM dd, yyyy", Locale.US).format(Date())
     val apkDownloadUrl = "https://aecii.kindfox.org/OBDII/RubiScan-OBDII.apk"
     val websiteUrl = "https://aecii.kindfox.org/OBDII/"
+    val licenseUrl = "https://www.apache.org/licenses/LICENSE-2.0"
     val installedVersion = "v${VersionCheck.installedVersionName(context)} (Version Code: ${VersionCheck.installedVersionCode(context)})"
     var editor by remember { mutableStateOf<VehicleEditorState?>(null) }
     var pendingDelete by remember { mutableStateOf<SavedVehicle?>(null) }
@@ -237,6 +254,19 @@ fun AdapterInfoScreen(
                     textDecoration = TextDecoration.Underline,
                     modifier = Modifier.clickable {
                         context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(apkDownloadUrl)))
+                    }
+                )
+                Text(
+                    text = "License",
+                    style = MaterialTheme.typography.labelMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                Text(
+                    text = "Apache License 2.0",
+                    style = MaterialTheme.typography.titleSmall,
+                    textDecoration = TextDecoration.Underline,
+                    modifier = Modifier.clickable {
+                        context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(licenseUrl)))
                     }
                 )
             }

@@ -54,7 +54,6 @@ The app does not ask you to save while you are still looking at the data. When y
 - Some PIDs and code modes are unsupported on a given car. Missing live values stay blank.
 - Use the readings as a diagnostic aid. Confirm them on the vehicle before a repair.
 
-
 Screen shots: 
 
 Sample PDF report: 
@@ -79,3 +78,8 @@ Sample PDF report:
 <img width="430" height="959" alt="image" src="https://github.com/user-attachments/assets/ed670f42-f8a7-4d82-91f2-bd669da52baa" />
 <img width="430" height="959" alt="image" src="https://github.com/user-attachments/assets/d34ea3c6-ae1d-4e20-9d3c-8d7919f18c1f" />
 
+## License
+
+Copyright 2026 aecii_3d
+
+Licensed under the Apache License, Version 2.0. See [LICENSE](LICENSE).
